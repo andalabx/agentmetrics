@@ -1,0 +1,39 @@
+{
+  "name": "agentmetrics-langchain",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AgentMetrics observability integration for LangChain.js",
+  "license": "MIT",
+  "homepage": "https://github.com/andalabx/agentmetrics",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andalabx/agentmetrics.git"
+  },
+  "keywords": ["langchain", "agentmetrics", "observability", "ai-agents", "monitoring"],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@langchain/core": ">=0.2.0"
+  },
+  "devDependencies": {
+    "@langchain/core": ">=0.2.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

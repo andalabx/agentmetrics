@@ -1,0 +1,37 @@
+# AgentMetrics - development compose
+# Hot-reloads both API and dashboard.
+#
+# Usage:
+#   docker compose -f docker-compose.dev.yml up
+
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "8099:8099"
+    environment:
+      DATABASE_URL: sqlite:///./data/agentmetrics.db
+      FRONTEND_URL: http://localhost:3099
+      ENVIRONMENT: development
+    volumes:
+      - ./api:/app          # mount source for live reload
+      - api_dev_data:/app/data
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8099 --reload
+    restart: unless-stopped
+
+  dashboard:
+    image: node:20-alpine
+    working_dir: /app
+    ports:
+      - "3099:3099"
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules   # anonymous volume keeps container node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3099"
+    depends_on:
+      - api
+
+volumes:
+  api_dev_data:

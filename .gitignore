@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+.env
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+uv.lock
+
+# Node / JS
+node_modules/
+.next/
+.turbo/
+dist/
+build/
+*.tsbuildinfo
+.pnpm-store/
+
+# Env files
+.env
+.env.local
+.env.production
+.env.*.local
+api/.env.local
+dashboard/.env.local
+
+# Build artifacts inside packages
+packages/python/dist/
+packages/python/*.egg-info/
+packages/js/dist/
+packages/js/node_modules/
+
+# Internal docs — never public
+.internal/
+PLAN.md
+CODE.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Docker
+*.log
+.internal
+
+# Local data (SQLite DB when running without Docker)
+data/

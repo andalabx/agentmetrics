@@ -1,0 +1,38 @@
+{
+  "name": "agentmetrics",
+  "version": "0.1.2",
+  "description": "Monitor your AI agents. Track cost, latency, and errors in two lines of code.",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "agentmetrics": "./bin/agentmetrics.js"
+  },
+  "files": ["dist", "bin", "README.md"],
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": ["ai agent monitoring", "llm monitoring", "ai agent observability", "llm observability", "langchain monitoring", "crewai monitoring", "openai cost tracker", "llm cost tracking", "ai agent tracing", "open source llm monitoring", "langsmith alternative", "langfuse alternative"],
+  "author": "AgentMetrics",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andalabx/agentmetrics.git"
+  },
+  "homepage": "https://github.com/andalabx/agentmetrics",
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
+  }
+}

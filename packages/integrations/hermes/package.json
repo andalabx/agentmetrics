@@ -1,0 +1,27 @@
+{
+  "name": "agentmetrics-hermes",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AgentMetrics observability plugin for Hermes agents",
+  "license": "MIT",
+  "homepage": "https://github.com/andalabx/agentmetrics",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andalabx/agentmetrics.git"
+  },
+  "keywords": ["hermes", "agentmetrics", "observability", "ai-agents", "monitoring"],
+  "peerDependencies": {
+    "hermes": ">=2026.1.0"
+  },
+  "hermes": {
+    "extensions": ["./index.ts"]
+  },
+  "files": [
+    "index.ts",
+    "hermes.plugin.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  }
+}

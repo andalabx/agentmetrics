@@ -1,0 +1,61 @@
+# AgentMetrics - one-command self-hosted deployment
+#
+# Default (SQLite):
+#   docker compose up
+#
+# With PostgreSQL:
+#   docker compose --profile postgres up
+
+services:
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    ports:
+      - "${API_PORT:-8099}:8099"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/agentmetrics.db}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3099}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    volumes:
+      - api_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8099/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "${DASHBOARD_PORT:-3099}:3099"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # PostgreSQL (optional) - enable with: docker compose --profile postgres up
+  # Set DATABASE_URL=postgresql://agentmetrics:${POSTGRES_PASSWORD}@postgres:5432/agentmetrics
+  postgres:
+    image: postgres:16-alpine
+    profiles: [postgres]
+    environment:
+      POSTGRES_USER: agentmetrics
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentmetrics}
+      POSTGRES_DB: agentmetrics
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentmetrics"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  api_data:    # SQLite database file + any local data
+  pg_data:     # PostgreSQL data (only used with --profile postgres)

@@ -1,0 +1,20 @@
+FROM python:3.12-slim
+
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install deps first (layer caching)
+COPY requirements.txt .
+RUN pip install --no-cache-dir --quiet --upgrade pip \
+ && pip install --no-cache-dir --quiet --root-user-action=ignore -r requirements.txt
+
+COPY . .
+
+# Data directory for SQLite persistence (mounted as a volume)
+RUN mkdir -p /app/data
+
+EXPOSE 8099
+
+# main.py startup event handles migrations (Alembic for Postgres, create_all for SQLite)
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8099"]

@@ -1,0 +1,31 @@
+[tool.uv.workspace]
+members = [
+    "packages/python",
+    "packages/integrations/langchain",
+    "packages/integrations/crewai",
+    "packages/integrations/llamaindex",
+    "packages/integrations/openai-agents",
+    "packages/integrations/autogen",
+    "packages/integrations/anthropic",
+    "api",
+]
+
+[tool.uv]
+exclude-newer = "7 days"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "TID", "RUF", "PERF"]
+ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B", "C4"]
+"**/__init__.py" = ["F401"]
+
+[tool.mypy]
+strict = true
+warn_return_any = true
+warn_unused_ignores = false

@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: agentmetrics-api
+    runtime: docker
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: ./api
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:///./data/agentmetrics.db
+      - key: AUTH_ENABLED
+        value: false
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: API_KEY_HMAC_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        fromService:
+          name: agentmetrics-dashboard
+          type: web
+          property: host
+    disk:
+      name: api-data
+      mountPath: /app/data
+      sizeGB: 1
+
+  - type: web
+    name: agentmetrics-dashboard
+    runtime: docker
+    dockerfilePath: ./dashboard/Dockerfile
+    dockerContext: ./dashboard
+    plan: free
+    buildArgs:
+      - key: VITE_AUTH_ENABLED
+        value: false
+    envVars:
+      - key: API_URL
+        fromService:
+          name: agentmetrics-api
+          type: web
+          property: host

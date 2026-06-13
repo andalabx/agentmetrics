@@ -1,0 +1,39 @@
+{
+  "name": "agentmetrics-anthropic",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AgentMetrics observability integration for Claude Managed Agents",
+  "license": "MIT",
+  "homepage": "https://github.com/andalabx/agentmetrics",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andalabx/agentmetrics.git"
+  },
+  "keywords": ["anthropic", "claude", "managed-agents", "agentmetrics", "observability", "ai-agents"],
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@anthropic-ai/sdk": ">=0.49.0"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": ">=0.49.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

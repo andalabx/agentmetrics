@@ -1,0 +1,17 @@
+{
+  "name": "AgentMetrics",
+  "short_name": "AgentMetrics",
+  "description": "Observability and optimization analytics for AI agents.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050C0A",
+  "theme_color": "#050C0A",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

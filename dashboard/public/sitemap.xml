@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+  <!-- Core marketing -->
+  <url>
+    <loc>https://agentmetrics.dev/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/about</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/pricing</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/use-cases</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Content -->
+  <url>
+    <loc>https://agentmetrics.dev/blog</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/changelog</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/community</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Integrations -->
+  <url>
+    <loc>https://agentmetrics.dev/integrations</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/integrations/openclaw</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/integrations/hermes</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Comparisons -->
+  <url>
+    <loc>https://agentmetrics.dev/comparisons</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+
+  <!-- Docs -->
+  <url>
+    <loc>https://agentmetrics.dev/docs</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/docs/quickstart</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/docs/sdk/python</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/docs/sdk/javascript</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/docs/integrations/openclaw</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/docs/integrations/hermes</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/docs/api/overview</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/docs/api/authentication</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/docs/api/events</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <!-- Support & legal -->
+  <url>
+    <loc>https://agentmetrics.dev/contact</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/support</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/status</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/security</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/privacy</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/terms</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://agentmetrics.dev/refund</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+
+</urlset>

@@ -1,0 +1,11 @@
+{
+  "name": "agentmetrics",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "dev": "pnpm --parallel run dev",
+    "build": "pnpm --filter dashboard build",
+    "lint": "pnpm --recursive run lint",
+    "type-check": "pnpm --recursive run type-check"
+  }
+}
