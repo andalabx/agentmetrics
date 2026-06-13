@@ -3,15 +3,15 @@ SLO (Service Level Objective) endpoint - ingest pipeline health and run quality 
 Returns aggregate statistics for a configurable look-back window (default 24 h).
 """
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.organization import Organization
 from app.deps import get_current_org_from_jwt
+from app.models.organization import Organization
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ def get_slo(
     """
     Ingest pipeline health and run quality metrics for the given look-back window.
 
-    window_hours - look-back window in hours (1–720, default 24).
+    window_hours - look-back window in hours (1-720, default 24).
     """
     org_id  = str(org.id)
 
@@ -90,7 +90,7 @@ def get_slo(
         failures   = int(core[2] or 0)
         others     = int(core[3] or 0)
         latest_at  = core[4]
-        now_utc    = datetime.now(tz=timezone.utc)
+        now_utc    = datetime.now(tz=UTC)
 
         success_rate = round(successes / total, 4) if total > 0 else None
         error_rate   = round(failures  / total, 4) if total > 0 else None
@@ -98,7 +98,7 @@ def get_slo(
         freshness_seconds = None
         if latest_at is not None:
             if latest_at.tzinfo is None:
-                latest_at = latest_at.replace(tzinfo=timezone.utc)
+                latest_at = latest_at.replace(tzinfo=UTC)
             freshness_seconds = int((now_utc - latest_at).total_seconds())
 
         result = {
@@ -147,4 +147,4 @@ def get_slo(
     except Exception:
         db.rollback()
         logger.exception("[slo] Unexpected error for org %s", org_id)
-        raise HTTPException(status_code=500, detail="Failed to load SLO data")
+        raise HTTPException(status_code=500, detail="Failed to load SLO data") from None

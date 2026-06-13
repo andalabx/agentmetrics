@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Any, AsyncIterator, Iterator, Optional
+from typing import Any
 
 from agentmetrics.http_client import HttpClient
 from agentmetrics.tracker import _estimate_cost
@@ -10,10 +10,21 @@ from agentmetrics.tracker import _estimate_cost
 
 class _SessionState:
     __slots__ = (
-        "agent_id", "session_id", "start_ms",
-        "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
-        "llm_calls", "tool_calls", "tool_errors", "tool_names",
-        "model", "status", "error", "_emitted",
+        "_emitted",
+        "agent_id",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "error",
+        "input_tokens",
+        "llm_calls",
+        "model",
+        "output_tokens",
+        "session_id",
+        "start_ms",
+        "status",
+        "tool_calls",
+        "tool_errors",
+        "tool_names",
     )
 
     def __init__(self, agent_id: str, session_id: str) -> None:
@@ -28,9 +39,9 @@ class _SessionState:
         self.tool_calls  = 0
         self.tool_errors = 0
         self.tool_names: set[str] = set()
-        self.model: Optional[str] = None
+        self.model: str | None = None
         self.status = "success"
-        self.error: Optional[str] = None
+        self.error: str | None = None
         self._emitted = False
 
     def absorb_span_end(self, event: Any) -> None:
@@ -124,10 +135,10 @@ class AgentMetricsSessionTracker:
         self._client   = HttpClient(api_key=api_key, base_url=base_url)
         self._agent_id = agent_id
 
-    def stream(self, client: Any, session_id: str, **kwargs: Any) -> "_SyncStreamContext":
+    def stream(self, client: Any, session_id: str, **kwargs: Any) -> _SyncStreamContext:
         return _SyncStreamContext(self._client, self._agent_id, client, session_id, kwargs)
 
-    def astream(self, client: Any, session_id: str, **kwargs: Any) -> "_AsyncStreamContext":
+    def astream(self, client: Any, session_id: str, **kwargs: Any) -> _AsyncStreamContext:
         return _AsyncStreamContext(self._client, self._agent_id, client, session_id, kwargs)
 
     def flush(self, timeout: float = 10.0) -> None:
@@ -148,9 +159,9 @@ class _SyncStreamContext:
         self._client     = client
         self._session_id = session_id
         self._kwargs     = kwargs
-        self._state: Optional[_SessionState] = None
+        self._state: _SessionState | None = None
 
-    def __enter__(self) -> "_SyncTrackingIter":
+    def __enter__(self) -> _SyncTrackingIter:
         self._state = _SessionState(self._agent_id, self._session_id)
         raw = self._client.beta.sessions.events.stream(
             self._session_id, **self._kwargs
@@ -174,7 +185,7 @@ class _SyncTrackingIter:
         self._http  = http
         self._done  = False
 
-    def __iter__(self) -> "_SyncTrackingIter":
+    def __iter__(self) -> _SyncTrackingIter:
         return self
 
     def __next__(self) -> Any:
@@ -204,9 +215,9 @@ class _AsyncStreamContext:
         self._client     = client
         self._session_id = session_id
         self._kwargs     = kwargs
-        self._state: Optional[_SessionState] = None
+        self._state: _SessionState | None = None
 
-    async def __aenter__(self) -> "_AsyncTrackingIter":
+    async def __aenter__(self) -> _AsyncTrackingIter:
         self._state = _SessionState(self._agent_id, self._session_id)
         raw = self._client.beta.sessions.events.stream(
             self._session_id, **self._kwargs
@@ -230,7 +241,7 @@ class _AsyncTrackingIter:
         self._http  = http
         self._done  = False
 
-    def __aiter__(self) -> "_AsyncTrackingIter":
+    def __aiter__(self) -> _AsyncTrackingIter:
         return self
 
     async def __anext__(self) -> Any:

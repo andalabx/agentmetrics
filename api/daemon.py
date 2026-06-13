@@ -19,7 +19,6 @@ import textwrap
 import urllib.request
 from pathlib import Path
 
-
 _SERVICE_NAME = "agentmetrics"
 _PLIST_LABEL = "com.agentmetrics.server"
 
@@ -112,7 +111,7 @@ def _systemd_unit(exe: str, port: int, db_url: str) -> str:
 
 
 def _launchd_plist(exe: str, port: int, db_url: str) -> str:
-    args = shlex.split(exe) + ["--port", str(port)]
+    args = [*shlex.split(exe), "--port", str(port)]
     args_xml = "\n".join(f"        <string>{a}</string>" for a in args)
     logs = _log_dir()
     return textwrap.dedent(f"""\

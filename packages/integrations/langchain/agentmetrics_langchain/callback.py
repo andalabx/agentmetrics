@@ -2,22 +2,30 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
+from agentmetrics.http_client import HttpClient
+from agentmetrics.tracker import _estimate_cost
 from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
-
-from agentmetrics.http_client import HttpClient
-from agentmetrics.tracker import _PRICING, _estimate_cost
 
 
 class _RunState:
     __slots__ = (
-        "agent_id", "start_ms", "input_tokens", "output_tokens",
-        "cache_read_tokens", "cache_write_tokens", "llm_calls",
-        "tool_calls", "tool_errors", "tool_names", "model",
-        "status", "error",
+        "agent_id",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "error",
+        "input_tokens",
+        "llm_calls",
+        "model",
+        "output_tokens",
+        "start_ms",
+        "status",
+        "tool_calls",
+        "tool_errors",
+        "tool_names",
     )
 
     def __init__(self, agent_id: str) -> None:
@@ -31,9 +39,9 @@ class _RunState:
         self.tool_calls       = 0
         self.tool_errors      = 0
         self.tool_names: set[str] = set()
-        self.model: Optional[str] = None
+        self.model: str | None = None
         self.status           = "success"
-        self.error: Optional[str] = None
+        self.error: str | None = None
 
 
 class AgentMetricsCallback(BaseCallbackHandler):
@@ -72,7 +80,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
         inputs: dict[str, Any],
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         rid = str(run_id)
@@ -86,7 +94,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
         outputs: dict[str, Any],
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         if parent_run_id is None:
@@ -97,7 +105,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
         error: BaseException,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         if parent_run_id is None:
@@ -114,7 +122,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
         prompts: list[str],
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         if parent_run_id is not None:
@@ -126,7 +134,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
         messages: list[list[Any]],
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         if parent_run_id is not None:
@@ -137,7 +145,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
         response: LLMResult,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         run = self._find_top_run(str(run_id))
@@ -177,7 +185,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
         error: BaseException,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         pass
@@ -189,7 +197,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
         input_str: str,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         rid  = str(run_id)
@@ -203,7 +211,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
         output: Any,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         rid = str(run_id)
@@ -219,7 +227,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
         error: BaseException,
         *,
         run_id: UUID,
-        parent_run_id: Optional[UUID] = None,
+        parent_run_id: UUID | None = None,
         **kwargs: Any,
     ) -> None:
         rid = str(run_id)
@@ -232,7 +240,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
                 run.tool_names.add(name)
 
 
-    def _find_top_run(self, run_id: str) -> Optional[_RunState]:
+    def _find_top_run(self, run_id: str) -> _RunState | None:
         """Walk the parent chain from run_id upward to find a top-level RunState."""
         seen: set[str] = set()
         rid = run_id

@@ -20,7 +20,6 @@ import os
 import sys
 import webbrowser
 
-
 # ── Shared server startup ─────────────────────────────────────────────────────
 
 def _do_serve(host: str, port: int, db: str | None, open_browser: bool) -> None:
@@ -30,7 +29,7 @@ def _do_serve(host: str, port: int, db: str | None, open_browser: bool) -> None:
         os.environ["DATABASE_URL"] = "sqlite:///./agentmetrics.db"
 
     db_url = os.environ["DATABASE_URL"]
-    print(f"\n  AgentMetrics Server")
+    print("\n  AgentMetrics Server")
     print(f"  Database : {db_url}")
     print(f"  API      : http://{host}:{port}")
     print(f"  Docs     : http://{host}:{port}/docs\n")

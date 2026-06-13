@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 from contextvars import ContextVar
-from typing import Any, Optional
+from typing import Any, ClassVar
 
 from agentmetrics.http_client import HttpClient
 
@@ -40,12 +40,12 @@ _PRICING: dict[str, tuple] = {
 
 
 def _estimate_cost(
-    model: Optional[str],
+    model: str | None,
     input_tokens: int,
     output_tokens: int,
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
-) -> Optional[float]:
+) -> float | None:
     if not model:
         return None
     rates = _PRICING.get(model)
@@ -69,12 +69,12 @@ def _estimate_cost(
     return round(cost, 8)
 
 
-_current_trace_id: ContextVar[Optional[str]] = ContextVar("agentmetrics_trace_id", default=None)
-_current_agent_id: ContextVar[Optional[str]] = ContextVar("agentmetrics_agent_id", default=None)
-_step_accumulator: ContextVar[Optional[list]] = ContextVar("agentmetrics_steps", default=None)
-_tool_call_accumulator: ContextVar[Optional[list]] = ContextVar("agentmetrics_tools", default=None)
-_llm_token_accumulator: ContextVar[Optional[dict]] = ContextVar("agentmetrics_tokens", default=None)
-_score_accumulator: ContextVar[Optional[dict]] = ContextVar("agentmetrics_scores", default=None)
+_current_trace_id: ContextVar[str | None] = ContextVar("agentmetrics_trace_id", default=None)
+_current_agent_id: ContextVar[str | None] = ContextVar("agentmetrics_agent_id", default=None)
+_step_accumulator: ContextVar[list | None] = ContextVar("agentmetrics_steps", default=None)
+_tool_call_accumulator: ContextVar[list | None] = ContextVar("agentmetrics_tools", default=None)
+_llm_token_accumulator: ContextVar[dict | None] = ContextVar("agentmetrics_tokens", default=None)
+_score_accumulator: ContextVar[dict | None] = ContextVar("agentmetrics_scores", default=None)
 
 
 class _BatchSender:
@@ -84,7 +84,7 @@ class _BatchSender:
         self._flush_interval = flush_interval
         self._queue: list[dict] = []
         self._lock = threading.Lock()
-        self._timer: Optional[threading.Timer] = None
+        self._timer: threading.Timer | None = None
         self._stopped = False
         self._start_timer()
 
@@ -131,13 +131,13 @@ class _BatchSender:
 
 
 class _StepContext:
-    def __init__(self, name: str, step_type: str = "custom", metadata: Optional[dict] = None):
+    def __init__(self, name: str, step_type: str = "custom", metadata: dict | None = None):
         self.name = name
         self.step_type = step_type
         self.metadata = metadata or {}
         self._start: float = 0.0
         self.status = "success"
-        self.error: Optional[str] = None
+        self.error: str | None = None
 
     def __enter__(self):
         self._start = time.monotonic()
@@ -171,12 +171,12 @@ class _StepContext:
 
 
 class _ToolContext:
-    def __init__(self, name: str, metadata: Optional[dict] = None):
+    def __init__(self, name: str, metadata: dict | None = None):
         self.name = name
         self.metadata = metadata or {}
         self._start: float = 0.0
         self.status = "success"
-        self.error: Optional[str] = None
+        self.error: str | None = None
 
     def __enter__(self):
         self._start = time.monotonic()
@@ -249,8 +249,7 @@ def _patch_litellm(on_response):
 
 def _patch_anthropic(on_response):
     try:
-        from anthropic.resources.messages import Messages
-        from anthropic.resources.messages import AsyncMessages
+        from anthropic.resources.messages import AsyncMessages, Messages
         _orig_sync = Messages.create
         _orig_async = AsyncMessages.create
 
@@ -296,7 +295,7 @@ def _patch_anthropic(on_response):
 def _patch_openai(on_response):
     # Covers OpenAI, Azure OpenAI, Groq, Together AI (all use openai SDK).
     try:
-        from openai.resources.chat.completions import Completions, AsyncCompletions
+        from openai.resources.chat.completions import AsyncCompletions, Completions
         _orig_sync = Completions.create
         _orig_async = AsyncCompletions.create
 
@@ -431,12 +430,12 @@ def _patch_langchain(on_response):
 def _patch_llamaindex(on_response):
     try:
         from llama_index.core.callbacks.base import CallbackManager
-        from llama_index.core.callbacks.schema import CBEventType, EventPayload
         from llama_index.core.callbacks.base_handler import BaseCallbackHandler as LIH
+        from llama_index.core.callbacks.schema import CBEventType, EventPayload
 
         class _CB(LIH):
-            event_starts_to_ignore: list = []
-            event_ends_to_ignore: list = []
+            event_starts_to_ignore: ClassVar[list] = []
+            event_ends_to_ignore: ClassVar[list] = []
 
             def on_event_end(self, event_type, payload=None, event_id="", **kwargs):
                 if event_type != CBEventType.LLM:
@@ -491,10 +490,10 @@ def _count_loops(tool_calls: list, threshold: int = 3) -> int:
 
 class Tracker:
     def __init__(self):
-        self._api_key: Optional[str] = None
-        self._client: Optional[HttpClient] = None
-        self._batch: Optional[_BatchSender] = None
-        self._environment: Optional[str] = None
+        self._api_key: str | None = None
+        self._client: HttpClient | None = None
+        self._batch: _BatchSender | None = None
+        self._environment: str | None = None
         self._sample_rate: float = 1.0
         self._instrumented: bool = False
 
@@ -502,7 +501,7 @@ class Tracker:
         self,
         api_key: str = "",
         base_url: str = "http://localhost:8099",
-        environment: Optional[str] = None,
+        environment: str | None = None,
         sample_rate: float = 1.0,
         batch_size: int = 20,
         flush_interval: float = 2.0,
@@ -543,7 +542,7 @@ class Tracker:
         if installed:
             logger.debug("agentmetrics: instrumented %s", ", ".join(installed))
 
-    def _on_llm_response(self, model: Optional[str], input_tokens: int, output_tokens: int, cache_read: int = 0, cache_write: int = 0) -> None:
+    def _on_llm_response(self, model: str | None, input_tokens: int, output_tokens: int, cache_read: int = 0, cache_write: int = 0) -> None:
         tokens = _llm_token_accumulator.get()
         if tokens is not None:
             tokens["model"] = model or tokens.get("model")
@@ -555,7 +554,7 @@ class Tracker:
             if cache_write:
                 tokens["cache_write_tokens"] = tokens.get("cache_write_tokens", 0) + cache_write
 
-    def track(self, agent_id: str, metadata: Optional[dict] = None):
+    def track(self, agent_id: str, metadata: dict | None = None):
         def decorator(func):
             if asyncio.iscoroutinefunction(func):
                 @functools.wraps(func)
@@ -575,10 +574,10 @@ class Tracker:
                 return sync_wrapper
         return decorator
 
-    def step(self, name: str, step_type: str = "custom", metadata: Optional[dict] = None) -> _StepContext:
+    def step(self, name: str, step_type: str = "custom", metadata: dict | None = None) -> _StepContext:
         return _StepContext(name, step_type=step_type, metadata=metadata)
 
-    def tool(self, name: str, metadata: Optional[dict] = None) -> _ToolContext:
+    def tool(self, name: str, metadata: dict | None = None) -> _ToolContext:
         return _ToolContext(name, metadata=metadata)
 
     def score(self, name: str, value: float) -> None:
@@ -658,13 +657,13 @@ class Tracker:
         agent_id: str,
         status: str,
         duration_ms: float,
-        error_msg: Optional[str],
+        error_msg: str | None,
         steps: list,
         tool_calls: list,
         tok_acc: dict,
-        extra_metadata: Optional[dict],
-        parent_trace_id: Optional[str] = None,
-        scores: Optional[dict] = None,
+        extra_metadata: dict | None,
+        parent_trace_id: str | None = None,
+        scores: dict | None = None,
     ) -> None:
         if not self._batch:
             return
@@ -731,7 +730,7 @@ class Tracker:
         self._batch.enqueue(payload)
 
     @property
-    def trace_id(self) -> Optional[str]:
+    def trace_id(self) -> str | None:
         return _current_trace_id.get()
 
     def flush(self, timeout: float = 10.0) -> None:

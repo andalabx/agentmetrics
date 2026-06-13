@@ -3,14 +3,15 @@ Alert rules CRUD + manual fire endpoint.
 Alert evaluation runs in the background via the aggregation job.
 """
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_current_org_from_jwt
 from app.models.organization import Organization
 from app.schemas.agent import AlertRule, AlertRuleCreate, AlertRulePatch
-from app.deps import get_current_org_from_jwt
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
 
@@ -85,7 +86,7 @@ def update_alert_rule(
     try:
         uuid.UUID(rule_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid rule_id")
+        raise HTTPException(status_code=422, detail="Invalid rule_id") from None
 
     updates = body.model_dump(exclude_none=True)
     if not updates:

@@ -3,16 +3,28 @@ import logging
 import sys
 import time
 
+from alembic import command
+from alembic.config import Config
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
-from alembic.config import Config
-from alembic import command
 
 from app.config import settings
-from app.routers import auth, events, agents, recommendations, alerts, activity, stats, fleet, runs, slo, audit
+from app.routers import (
+    activity,
+    agents,
+    alerts,
+    audit,
+    auth,
+    events,
+    fleet,
+    recommendations,
+    runs,
+    slo,
+    stats,
+)
 from app.worker import start_worker, stop_worker
 
 logger = logging.getLogger("agentmetrics")
@@ -105,9 +117,9 @@ def run_migrations() -> None:
     from app.database import IS_SQLITE, Base, engine
     if IS_SQLITE:
         # Import all models so metadata is populated before create_all
+        import app.models.event
+        import app.models.metrics
         import app.models.organization  # noqa: F401
-        import app.models.event         # noqa: F401
-        import app.models.metrics       # noqa: F401
         Base.metadata.create_all(bind=engine)
         logger.info("[startup] SQLite schema created")
     else:
@@ -206,7 +218,8 @@ def health():
 # Serve pre-built dashboard SPA when bundled inside the pip package.
 # Build the dashboard with VITE_API_URL="" and copy dist/ → api/app/static/.
 # The /v1/* API routes above always take precedence.
-import pathlib as _pathlib
+import pathlib as _pathlib  # noqa: E402
+
 _static_dir = _pathlib.Path(__file__).parent / "static"
 if _static_dir.is_dir():
     from fastapi.responses import FileResponse as _FileResponse

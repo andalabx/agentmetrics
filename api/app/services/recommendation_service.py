@@ -3,8 +3,9 @@ Rule-based recommendation engine.
 Rules use actual usage data (model, token ratios, cache hit rate) for honest savings estimates.
 """
 import logging
-from sqlalchemy.orm import Session
+
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.schemas.agent import Recommendation
 
@@ -137,7 +138,7 @@ def run_basic_rules(agents_data: list) -> list[Recommendation]:
         # Enriched fields (may be absent if enrich failed)
         top_model           = agent.get("top_model")
         already_caching     = agent.get("already_caching", False)
-        cache_read_tokens   = agent.get("cache_read_tokens", 0)
+        agent.get("cache_read_tokens", 0)
         total_input_tokens  = agent.get("total_input_tokens", 0)
 
         if total_calls == 0:
@@ -193,7 +194,7 @@ def run_basic_rules(agents_data: list) -> list[Recommendation]:
             if total_input_tokens > 0:
                 # Rough: assume 15% of input is repetitive system prompt
                 cacheable_fraction = 0.15
-                cache_token_saving = total_input_tokens * cacheable_fraction * 0.90
+                total_input_tokens * cacheable_fraction * 0.90
                 # Estimate cost saved: proportional to input token fraction
                 input_cost_fraction = 0.5  # rough: input tokens ~50% of cost
                 cache_saving = round(total_cost * input_cost_fraction * cacheable_fraction * 0.90, 6)
@@ -207,7 +208,7 @@ def run_basic_rules(agents_data: list) -> list[Recommendation]:
                 description=(
                     f"'{agent_id}' has run {total_calls} times with no prompt cache hits detected. "
                     f"If your system prompt or instructions are repeated across runs, enabling caching "
-                    f"(supported on Claude and GPT-4o) could reduce input token costs by ~8–15%, "
+                    f"(supported on Claude and GPT-4o) could reduce input token costs by ~8-15%, "
                     f"saving ~${cache_saving:.4f} at current volume."
                 ),
                 estimated_savings_usd=cache_saving,

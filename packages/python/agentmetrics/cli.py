@@ -58,7 +58,7 @@ def main() -> None:
     # All service management commands require agentmetrics-server to be installed
     _require_server(args.command)
 
-    from agentmetrics.daemon import install, uninstall, start, stop, restart, status
+    from agentmetrics.daemon import install, restart, status, stop, uninstall
 
     if args.command == "install":
         install(port=args.port, db_url=args.db or "")

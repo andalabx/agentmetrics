@@ -1,13 +1,13 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.database import get_db, IS_SQLITE
-from app.models.organization import Organization
-from app.models.event import Event
-from app.schemas.event import EventCreate, EventResponse, BatchEventCreate, BatchEventResponse
-from app.deps import get_default_org
 from app.core.pricing import calculate_cost
+from app.database import IS_SQLITE, get_db
+from app.deps import get_default_org
+from app.models.event import Event
+from app.models.organization import Organization
+from app.schemas.event import BatchEventCreate, BatchEventResponse, EventCreate, EventResponse
 
 router = APIRouter(prefix="/events", tags=["events"])
 

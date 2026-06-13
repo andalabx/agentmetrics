@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Any, AsyncIterator, Optional
+from typing import Any
 
 from agentmetrics.http_client import HttpClient
-from agentmetrics.tracker import _estimate_cost
 
 
 def _build_payload(
@@ -19,7 +18,7 @@ def _build_payload(
     llm_calls: int,
     input_tokens: int,
     output_tokens: int,
-    error: Optional[str],
+    error: str | None,
 ) -> dict[str, Any]:
     return {
         "event_id":                 str(uuid.uuid4()),
@@ -66,7 +65,7 @@ class AgentMetricsRunStream:
         self._client   = HttpClient(api_key=api_key, base_url=base_url)
         self._agent_id = agent_id
 
-    def run(self, team: Any, **kwargs: Any) -> "_RunContext":
+    def run(self, team: Any, **kwargs: Any) -> _RunContext:
         return _RunContext(self._client, self._agent_id, team, kwargs)
 
     def flush(self, timeout: float = 10.0) -> None:
@@ -94,9 +93,9 @@ class _RunContext:
         self._input_tokens  = 0
         self._output_tokens = 0
         self._status = "success"
-        self._error: Optional[str] = None
+        self._error: str | None = None
 
-    async def __aenter__(self) -> "_TrackingStream":
+    async def __aenter__(self) -> _TrackingStream:
         self._start_ms = time.monotonic()
         raw_stream = self._team.run_stream(**self._run_kwargs)
         return _TrackingStream(raw_stream, self)
@@ -129,7 +128,7 @@ class _TrackingStream:
         self._raw = raw_stream
         self._ctx = ctx
 
-    def __aiter__(self) -> "_TrackingStream":
+    def __aiter__(self) -> _TrackingStream:
         return self
 
     async def __anext__(self) -> Any:

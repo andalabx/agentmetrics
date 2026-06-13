@@ -8,12 +8,12 @@ platform/agent coverage.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.organization import Organization
 from app.deps import get_current_org_from_jwt
+from app.models.organization import Organization
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +34,9 @@ def get_audit_stream(
     and a list of recent runs flagged for security review (debug mode, missing
     policy version, or unknown platform).
 
-    window_hours - look-back window in hours (1–2160, default 168 = 7 days).
+    window_hours - look-back window in hours (1-2160, default 168 = 7 days).
     agent_id    - filter to a specific agent (optional).
-    limit       - max number of flagged events to return (1–1000, default 100).
+    limit       - max number of flagged events to return (1-1000, default 100).
     """
     org_id = str(org.id)
     try:
@@ -146,4 +146,4 @@ def get_audit_stream(
     except Exception:
         db.rollback()
         logger.exception("[audit] Unexpected error for org %s", org_id)
-        raise HTTPException(status_code=500, detail="Failed to load audit data")
+        raise HTTPException(status_code=500, detail="Failed to load audit data") from None

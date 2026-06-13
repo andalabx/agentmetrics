@@ -2,7 +2,7 @@ import asyncio
 import json
 import secrets
 import threading
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -23,10 +23,10 @@ _tickets_lock = threading.Lock()
 
 def _issue_ticket(org_id: str) -> str:
     ticket = secrets.token_urlsafe(32)
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=30)
+    expires_at = datetime.now(UTC) + timedelta(seconds=30)
     with _tickets_lock:
         # Purge expired tickets
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expired = [t for t, (_, exp) in _tickets.items() if exp < now]
         for t in expired:
             del _tickets[t]
@@ -38,7 +38,7 @@ def _consume_ticket(ticket: str) -> str | None:
     """Consume a ticket exactly once. Returns org_id or None if invalid/expired."""
     with _tickets_lock:
         # Purge all expired tickets while the lock is held (cheap, bounded set)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         expired = [t for t, (_, exp) in _tickets.items() if exp < now]
         for t in expired:
             del _tickets[t]
@@ -46,7 +46,7 @@ def _consume_ticket(ticket: str) -> str | None:
     if not entry:
         return None
     org_id, expires_at = entry
-    if datetime.now(timezone.utc) > expires_at:
+    if datetime.now(UTC) > expires_at:
         return None
     return org_id
 

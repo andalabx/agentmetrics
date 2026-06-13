@@ -1,15 +1,15 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_current_org_from_jwt
 from app.models.organization import Organization
 from app.schemas.agent import Recommendation
 from app.services.agent_service import get_agents_summary
-from app.services.recommendation_service import run_basic_rules, enrich_agents_data
-from app.deps import get_current_org_from_jwt
+from app.services.recommendation_service import enrich_agents_data, run_basic_rules
 
 router = APIRouter(prefix="/recommendations", tags=["recommendations"])
 
@@ -25,7 +25,7 @@ def get_recommendations(
     agents_data = [a.model_dump() for a in agents]
     agents_data = enrich_agents_data(str(org.id), agents_data, db)
     recs = [r.model_dump() for r in run_basic_rules(agents_data)]
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = []
     for rec in recs:
         obj = Recommendation.model_validate(rec) if isinstance(rec, dict) else rec

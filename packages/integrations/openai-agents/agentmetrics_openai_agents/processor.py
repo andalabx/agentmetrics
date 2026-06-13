@@ -2,26 +2,34 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Any, Optional
-
-from agents.tracing import TracingProcessor, Trace, Span
-from agents.tracing.spans import (
-    LLMSpanData,
-    FunctionSpanData,
-    AgentSpanData,
-    HandoffSpanData,
-)
+from typing import Any
 
 from agentmetrics.http_client import HttpClient
 from agentmetrics.tracker import _estimate_cost
+from agents.tracing import Span, Trace, TracingProcessor
+from agents.tracing.spans import (
+    AgentSpanData,
+    FunctionSpanData,
+    HandoffSpanData,
+    LLMSpanData,
+)
 
 
 class _TraceState:
     __slots__ = (
-        "agent_id", "start_ms",
-        "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
-        "llm_calls", "tool_calls", "tool_errors", "tool_names",
-        "model", "status", "error",
+        "agent_id",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "error",
+        "input_tokens",
+        "llm_calls",
+        "model",
+        "output_tokens",
+        "start_ms",
+        "status",
+        "tool_calls",
+        "tool_errors",
+        "tool_names",
     )
 
     def __init__(self, agent_id: str) -> None:
@@ -35,9 +43,9 @@ class _TraceState:
         self.tool_calls  = 0
         self.tool_errors = 0
         self.tool_names: set[str] = set()
-        self.model: Optional[str] = None
+        self.model: str | None = None
         self.status = "success"
-        self.error: Optional[str] = None
+        self.error: str | None = None
 
 
 class AgentMetricsProcessor(TracingProcessor):

@@ -1,6 +1,6 @@
-from pydantic import BaseModel
-from typing import Optional
 from datetime import datetime
+
+from pydantic import BaseModel
 
 
 class AgentSummary(BaseModel):
@@ -11,29 +11,29 @@ class AgentSummary(BaseModel):
     total_cost: float
     avg_cost: float
     success_rate: float
-    last_seen: Optional[datetime] = None
+    last_seen: datetime | None = None
 
 
 class RecentRun(BaseModel):
     trace_id: str
     status: str
     cost_usd: float
-    duration_ms: Optional[float]
-    error_message: Optional[str]
+    duration_ms: float | None
+    error_message: str | None
     timestamp: datetime
-    model: Optional[str] = None
-    input_tokens: Optional[int] = None
-    output_tokens: Optional[int] = None
+    model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
     # Per-run detail fields
-    step_count: Optional[int] = None
-    tool_calls: Optional[int] = None
-    loop_count: Optional[int] = None
-    cache_read_tokens: Optional[int] = None
-    cache_write_tokens: Optional[int] = None
-    llm_calls: Optional[int] = None
-    environment: Optional[str] = None
-    version: Optional[str] = None
-    steps: Optional[list] = None
+    step_count: int | None = None
+    tool_calls: int | None = None
+    loop_count: int | None = None
+    cache_read_tokens: int | None = None
+    cache_write_tokens: int | None = None
+    llm_calls: int | None = None
+    environment: str | None = None
+    version: str | None = None
+    steps: list | None = None
 
 
 class CostByDay(BaseModel):
@@ -56,10 +56,10 @@ class CostByModel(BaseModel):
 
 
 class LatencyPercentiles(BaseModel):
-    p50: Optional[float] = None
-    p95: Optional[float] = None
-    p99: Optional[float] = None
-    avg: Optional[float] = None
+    p50: float | None = None
+    p95: float | None = None
+    p99: float | None = None
+    avg: float | None = None
 
 
 class AgentDetail(BaseModel):
@@ -70,15 +70,15 @@ class AgentDetail(BaseModel):
     total_cost: float
     avg_cost: float
     success_rate: float
-    last_seen: Optional[datetime] = None
+    last_seen: datetime | None = None
     # Performance
     latency: LatencyPercentiles = LatencyPercentiles()
-    avg_duration_ms: Optional[float] = None
+    avg_duration_ms: float | None = None
     # Cost breakdown
     cost_by_day: list[CostByDay] = []
     cost_by_model: list[CostByModel] = []
     # Reliability
-    mttr_ms: Optional[float] = None
+    mttr_ms: float | None = None
     loop_count: int = 0
     # Token detail (from run_metadata JSONB)
     total_input_tokens: int = 0
@@ -98,21 +98,21 @@ class AgentDetail(BaseModel):
 
 
 class Recommendation(BaseModel):
-    id: Optional[str] = None
+    id: str | None = None
     type: str  # "model_switch" | "caching" | "error_fix" | "cost_spike"
     priority: str = "medium"
     title: str
     description: str
     estimated_savings_usd: float
     status: str = "open"
-    agent_id: Optional[str] = None
-    created_at: Optional[datetime] = None
-    calculated_at: Optional[datetime] = None
+    agent_id: str | None = None
+    created_at: datetime | None = None
+    calculated_at: datetime | None = None
 
 
 class AlertRule(BaseModel):
-    id: Optional[str] = None
-    agent_id: Optional[str] = None
+    id: str | None = None
+    agent_id: str | None = None
     name: str
     metric: str         # error_rate | cost_usd | duration_ms | loop_count
     operator: str       # gt | lt | gte | lte
@@ -123,7 +123,7 @@ class AlertRule(BaseModel):
 
 
 class AlertRuleCreate(BaseModel):
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
     name: str
     metric: str
     operator: str
@@ -133,8 +133,8 @@ class AlertRuleCreate(BaseModel):
 
 
 class AlertRulePatch(BaseModel):
-    name: Optional[str] = None
-    threshold: Optional[float] = None
-    window_minutes: Optional[int] = None
-    notify_email: Optional[bool] = None
-    enabled: Optional[bool] = None
+    name: str | None = None
+    threshold: float | None = None
+    window_minutes: int | None = None
+    notify_email: bool | None = None
+    enabled: bool | None = None

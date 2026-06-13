@@ -2,15 +2,15 @@
 Health score and daily briefing endpoints.
 """
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from app.database import get_db, IS_SQLITE
-from app.models.organization import Organization
+from app.database import IS_SQLITE, get_db
 from app.deps import get_current_org_from_jwt
+from app.models.organization import Organization
 
 logger = logging.getLogger(__name__)
 
@@ -70,17 +70,19 @@ def get_fleet_health(
     org: Organization = Depends(get_current_org_from_jwt),
     db: Session = Depends(get_db),
 ):
-    """Health Score (0–100) with component breakdown."""
+    """Health Score (0-100) with component breakdown."""
     org_id = str(org.id)
 
     try:
         if IS_SQLITE:
-            from sqlalchemy import func, case
-            from app.models.event import Event
-            from datetime import timedelta, timezone
             import uuid as _uuid
+            from datetime import timedelta
+
+            from sqlalchemy import case, func
+
+            from app.models.event import Event
             org_uuid = _uuid.UUID(org_id) if isinstance(org_id, str) else org_id
-            cutoff_7d = datetime.now(timezone.utc) - timedelta(days=7)
+            cutoff_7d = datetime.now(UTC) - timedelta(days=7)
             agent_rows = (
                 db.query(
                     Event.agent_id,

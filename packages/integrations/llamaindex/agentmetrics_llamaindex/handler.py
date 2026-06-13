@@ -2,35 +2,39 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Any, Optional
-
-from llama_index.core.instrumentation import get_dispatcher
-from llama_index.core.instrumentation.event_handlers import BaseEventHandler
-from llama_index.core.instrumentation.span_handlers import BaseSpanHandler
-from llama_index.core.instrumentation.events import BaseEvent
-from llama_index.core.instrumentation.events.agent import (
-    AgentChatWithStepStartEvent,
-    AgentChatWithStepEndEvent,
-    AgentToolCallEvent,
-)
-from llama_index.core.instrumentation.events.llm import (
-    LLMChatStartEvent,
-    LLMChatEndEvent,
-    LLMCompletionStartEvent,
-    LLMCompletionEndEvent,
-)
-from llama_index.core.instrumentation.span import SimpleSpan
+from typing import Any
 
 from agentmetrics.http_client import HttpClient
 from agentmetrics.tracker import _estimate_cost
+from llama_index.core.instrumentation.event_handlers import BaseEventHandler
+from llama_index.core.instrumentation.events import BaseEvent
+from llama_index.core.instrumentation.events.agent import (
+    AgentToolCallEvent,
+)
+from llama_index.core.instrumentation.events.llm import (
+    LLMChatEndEvent,
+    LLMCompletionEndEvent,
+)
+from llama_index.core.instrumentation.span import SimpleSpan
+from llama_index.core.instrumentation.span_handlers import BaseSpanHandler
 
 
 class _RunState:
     __slots__ = (
-        "agent_id", "start_ms", "span_id",
-        "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
-        "llm_calls", "tool_calls", "tool_errors", "tool_names",
-        "model", "status", "error",
+        "agent_id",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "error",
+        "input_tokens",
+        "llm_calls",
+        "model",
+        "output_tokens",
+        "span_id",
+        "start_ms",
+        "status",
+        "tool_calls",
+        "tool_errors",
+        "tool_names",
     )
 
     def __init__(self, agent_id: str, span_id: str) -> None:
@@ -45,12 +49,12 @@ class _RunState:
         self.tool_calls  = 0
         self.tool_errors = 0
         self.tool_names: set[str] = set()
-        self.model: Optional[str] = None
+        self.model: str | None = None
         self.status = "success"
-        self.error: Optional[str] = None
+        self.error: str | None = None
 
 
-def _extract_tokens(response: Any) -> tuple[int, int, int, int, Optional[str]]:
+def _extract_tokens(response: Any) -> tuple[int, int, int, int, str | None]:
     """Return (input, output, cache_read, cache_write, model) from any LLM response."""
     inp = out = cr = cw = 0
     model = None
@@ -88,7 +92,7 @@ class AgentMetricsEventHandler(BaseEventHandler):
     and delegates emission to the paired span handler.
     """
 
-    def __init__(self, span_handler: "AgentMetricsSpanHandler") -> None:
+    def __init__(self, span_handler: AgentMetricsSpanHandler) -> None:
         self._sh = span_handler
 
     def handle(self, event: BaseEvent) -> None:
@@ -136,7 +140,7 @@ class AgentMetricsSpanHandler(BaseSpanHandler[SimpleSpan]):
         # span_id → RunState (only for top-level agent spans)
         self._runs: dict[str, _RunState] = {}
 
-    def _find_run(self, span_id: str) -> Optional[_RunState]:
+    def _find_run(self, span_id: str) -> _RunState | None:
         """Walk up the span hierarchy to find a tracked RunState."""
         sid = span_id
         seen: set[str] = set()
@@ -156,10 +160,10 @@ class AgentMetricsSpanHandler(BaseSpanHandler[SimpleSpan]):
         id_: str,
         bound_args: Any,
         instance: Any,
-        parent_span_id: Optional[str] = None,
+        parent_span_id: str | None = None,
         tags: dict[str, Any] | None = None,
         **kwargs: Any,
-    ) -> Optional[SimpleSpan]:
+    ) -> SimpleSpan | None:
         # Only track top-level spans (no parent) that come from agent operations
         if parent_span_id is None and self._is_agent_span(instance):
             agent_name = getattr(instance, "name", None) or self._agent_id
@@ -173,7 +177,7 @@ class AgentMetricsSpanHandler(BaseSpanHandler[SimpleSpan]):
         instance: Any,
         result: Any = None,
         **kwargs: Any,
-    ) -> Optional[SimpleSpan]:
+    ) -> SimpleSpan | None:
         state = self._runs.pop(id_, None)
         if state:
             self._emit(state, id_, success=True)
@@ -184,9 +188,9 @@ class AgentMetricsSpanHandler(BaseSpanHandler[SimpleSpan]):
         id_: str,
         bound_args: Any,
         instance: Any,
-        err: Optional[Exception] = None,
+        err: Exception | None = None,
         **kwargs: Any,
-    ) -> Optional[SimpleSpan]:
+    ) -> SimpleSpan | None:
         state = self._runs.pop(id_, None)
         if state:
             state.status = "failed"

@@ -9,7 +9,6 @@ Jobs:
   data_retention     daily   at 03:30   — delete events beyond plan retention
 """
 import logging
-from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -55,6 +54,7 @@ def _job_alerts() -> None:
 
 def _job_retention() -> None:
     from sqlalchemy import text
+
     from app.database import IS_SQLITE
     db = SessionLocal()
     try:

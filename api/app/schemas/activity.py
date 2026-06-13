@@ -1,5 +1,6 @@
+from typing import Any
+
 from pydantic import BaseModel
-from typing import Optional, Any
 
 
 class ActivityEvent(BaseModel):
@@ -23,7 +24,7 @@ class ActivityEvent(BaseModel):
     """
     type:        str
     agent_id:    str
-    session_key: Optional[str] = None
-    run_id:      Optional[str] = None
+    session_key: str | None = None
+    run_id:      str | None = None
     ts:          int  # unix epoch ms
-    data:        Optional[dict[str, Any]] = None
+    data:        dict[str, Any] | None = None

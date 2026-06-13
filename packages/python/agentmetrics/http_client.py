@@ -4,7 +4,6 @@ import logging
 import random
 import threading
 import time
-from typing import Optional
 
 import requests
 
@@ -33,7 +32,7 @@ class HttpClient:
 
     def fire_and_forget(self, payload: dict) -> None:
         """Post event in a background thread. Never blocks. Never raises."""
-        if "error" in payload and payload["error"]:
+        if payload.get("error"):
             payload = {**payload, "error": _sanitize_error(str(payload["error"]))}
         t = threading.Thread(target=self._post_with_retry, args=(payload,), daemon=True)
         with self._lock:

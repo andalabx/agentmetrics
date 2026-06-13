@@ -2,7 +2,8 @@
 Cross-dialect SQL helpers. Use these instead of PostgreSQL-specific functions
 so the codebase works on both PostgreSQL (production) and SQLite (local/dev).
 """
-from sqlalchemy import func, String, cast
+from sqlalchemy import String, cast, func
+
 from app.database import IS_SQLITE
 
 

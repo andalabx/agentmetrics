@@ -2,39 +2,43 @@ from __future__ import annotations
 
 import time
 import uuid
-from typing import Any, Optional
+from typing import Any
 
+from agentmetrics.http_client import HttpClient
+from agentmetrics.tracker import _estimate_cost
 from crewai.utilities.events import crewai_event_bus
 from crewai.utilities.events.base_event_listener import BaseEventListener
 from crewai.utilities.events.types.crew_events import (
-    CrewKickoffStartedEvent,
     CrewKickoffCompletedEvent,
     CrewKickoffFailedEvent,
+    CrewKickoffStartedEvent,
 )
 from crewai.utilities.events.types.llm_events import (
     LLMCallCompletedEvent,
     LLMCallFailedEvent,
 )
 from crewai.utilities.events.types.tool_usage_events import (
-    ToolUsageFinishedEvent,
     ToolUsageErrorEvent,
+    ToolUsageFinishedEvent,
 )
-from crewai.utilities.events.types.agent_events import (
-    AgentExecutionStartedEvent,
-    AgentExecutionCompletedEvent,
-    AgentExecutionErrorEvent,
-)
-
-from agentmetrics.http_client import HttpClient
-from agentmetrics.tracker import _estimate_cost
 
 
 class _KickoffState:
     __slots__ = (
-        "trace_id", "agent_id", "start_ms",
-        "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens",
-        "llm_calls", "tool_calls", "tool_errors", "tool_names",
-        "model", "status", "error",
+        "agent_id",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "error",
+        "input_tokens",
+        "llm_calls",
+        "model",
+        "output_tokens",
+        "start_ms",
+        "status",
+        "tool_calls",
+        "tool_errors",
+        "tool_names",
+        "trace_id",
     )
 
     def __init__(self, agent_id: str) -> None:
@@ -49,9 +53,9 @@ class _KickoffState:
         self.tool_calls   = 0
         self.tool_errors  = 0
         self.tool_names: set[str] = set()
-        self.model: Optional[str] = None
+        self.model: str | None = None
         self.status = "success"
-        self.error: Optional[str] = None
+        self.error: str | None = None
 
 
 class AgentMetricsListener(BaseEventListener):

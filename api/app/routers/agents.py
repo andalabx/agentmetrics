@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
-from sqlalchemy import text
 from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from app.database import get_db, IS_SQLITE
-from app.db_compat import trunc_hour, interval_hours_ago
-from app.models.organization import Organization
-from app.models.event import Event
-from app.schemas.agent import AgentSummary, AgentDetail
-from app.services.agent_service import get_agents_summary, get_agent_detail
+from app.database import IS_SQLITE, get_db
+from app.db_compat import interval_hours_ago
 from app.deps import get_current_org_from_jwt
+from app.models.event import Event
+from app.models.organization import Organization
+from app.schemas.agent import AgentDetail, AgentSummary
+from app.services.agent_service import get_agent_detail, get_agents_summary
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 

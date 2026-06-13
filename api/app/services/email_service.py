@@ -3,7 +3,7 @@ Alert notification service.
 Supports Slack webhook notifications. Email alert delivery is not included.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ def _build_html(rule: dict, actual_value: float, threshold: float, app_url: str)
     agent_label   = rule.get("agent_id") or "all agents"
     rule_name     = rule.get("name") or f"{metric_lbl} alert"
     company       = rule.get("company_name") or "your organization"
-    now_str       = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    now_str       = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     agent_url     = f"{app_url}/agents/{rule['agent_id']}" if rule.get("agent_id") else f"{app_url}/agents"
 
     return f"""<!DOCTYPE html>

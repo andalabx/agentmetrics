@@ -2,9 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.deps import get_default_org
 from app.models.organization import Organization
 from app.schemas.auth import OrgResponse, UpdateOrgRequest
-from app.deps import get_default_org
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

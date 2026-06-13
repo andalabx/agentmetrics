@@ -10,16 +10,15 @@ queue.Queue bridges the sync publish side to the async SSE generator.
 import queue
 import threading
 from collections import defaultdict, deque
-from typing import Dict, List
 
 
 class ActivityStore:
     def __init__(self):
         self._lock    = threading.Lock()
         # Recent events per org - replayed to new SSE subscribers
-        self._recent:  Dict[str, deque]           = defaultdict(lambda: deque(maxlen=200))
+        self._recent:  dict[str, deque]           = defaultdict(lambda: deque(maxlen=200))
         # Per-org list of subscriber queues
-        self._queues:  Dict[str, List[queue.Queue]] = defaultdict(list)
+        self._queues:  dict[str, list[queue.Queue]] = defaultdict(list)
 
     def publish(self, org_id: str, event: dict) -> None:
         """Called from sync request handlers. Thread-safe."""

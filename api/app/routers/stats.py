@@ -2,16 +2,16 @@
 Stats endpoint - monthly cost, event counts, historical spend.
 """
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import text
-from sqlalchemy.exc import ProgrammingError, OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.orm import Session
 
-from app.database import get_db, IS_SQLITE
-from app.models.organization import Organization
+from app.database import IS_SQLITE, get_db
 from app.deps import get_current_org_from_jwt
+from app.models.organization import Organization
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +30,11 @@ def get_monthly_stats(
 
     if IS_SQLITE:
         # Monthly aggregation tables use PostgreSQL-only SQL; return live counts directly
-        from sqlalchemy import func
-        from app.models.event import Event
-        from app.models.organization import Organization as OrgModel
         import uuid
+
+        from sqlalchemy import func
+
+        from app.models.event import Event
         try:
             org_uuid = uuid.UUID(org_id) if isinstance(org_id, str) else org_id
             total = db.query(
@@ -120,7 +121,7 @@ def get_monthly_stats(
     except Exception:
         db.rollback()
         logger.exception("[stats] Unexpected error fetching monthly stats for org %s", org_id)
-        raise HTTPException(status_code=500, detail="Failed to load stats")
+        raise HTTPException(status_code=500, detail="Failed to load stats") from None
 
 @router.get("/week-comparison")
 def get_week_comparison(
@@ -131,14 +132,16 @@ def get_week_comparison(
     org_id = str(org.id)
 
     if IS_SQLITE:
-        from sqlalchemy import func, case
-        from app.models.event import Event
-        from datetime import timedelta, timezone
         import uuid as _uuid
+        from datetime import timedelta
+
+        from sqlalchemy import case, func
+
+        from app.models.event import Event
         try:
             org_uuid = _uuid.UUID(org_id) if isinstance(org_id, str) else org_id
-            cutoff_7d = datetime.now(timezone.utc) - timedelta(days=7)
-            cutoff_14d = datetime.now(timezone.utc) - timedelta(days=14)
+            cutoff_7d = datetime.now(UTC) - timedelta(days=7)
+            cutoff_14d = datetime.now(UTC) - timedelta(days=14)
             cur = db.query(
                 func.count(Event.id).label("runs"),
                 func.coalesce(func.sum(Event.cost_usd), 0).label("cost"),
@@ -153,7 +156,8 @@ def get_week_comparison(
             ).filter(Event.org_id == org_uuid, Event.timestamp >= cutoff_14d, Event.timestamp < cutoff_7d).one()
 
             def pct(c, p):
-                if not p: return None
+                if not p:
+                    return None
                 return round(((float(c or 0) - float(p or 0)) / float(p)) * 100, 1)
 
             result = {

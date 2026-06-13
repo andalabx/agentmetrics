@@ -1,55 +1,56 @@
+from typing import Any, Literal
+
 from pydantic import BaseModel, Field
-from typing import Optional, Literal, Any
 
 
 class EventCreate(BaseModel):
     # v2 canonical identity fields
-    event_id: Optional[str] = None          # UUID v4, used for idempotency on retry
+    event_id: str | None = None          # UUID v4, used for idempotency on retry
     trace_id: str
-    session_id: Optional[str] = None        # OpenClaw session identifier
-    run_id: Optional[str] = None            # OpenClaw run identifier
+    session_id: str | None = None        # OpenClaw session identifier
+    run_id: str | None = None            # OpenClaw run identifier
     agent_id: str
-    platform: Optional[str] = None          # "openclaw" | "python" | "javascript"
-    event_name: Optional[str] = None        # "agent_end" | "session_metrics" etc.
-    ts: Optional[int] = None                # Unix ms timestamp from client
+    platform: str | None = None          # "openclaw" | "python" | "javascript"
+    event_name: str | None = None        # "agent_end" | "session_metrics" etc.
+    ts: int | None = None                # Unix ms timestamp from client
     status: Literal["success", "failed", "timeout", "killed", "cancelled"]
-    duration_ms: Optional[float] = None
+    duration_ms: float | None = None
     cost_usd: float = 0.0
-    model: Optional[str] = None
-    model_provider: Optional[str] = None
+    model: str | None = None
+    model_provider: str | None = None
     # Token buckets
-    input_tokens: Optional[float] = None
-    output_tokens: Optional[float] = None
-    cache_read_tokens: Optional[float] = None
-    cache_write_tokens: Optional[float] = None
-    total_tokens: Optional[float] = None
+    input_tokens: float | None = None
+    output_tokens: float | None = None
+    cache_read_tokens: float | None = None
+    cache_write_tokens: float | None = None
+    total_tokens: float | None = None
     # Tools
-    tool_calls: Optional[int] = None
-    tool_errors: Optional[int] = None
-    tool_names: Optional[list[str]] = None  # unique tool names used in run
+    tool_calls: int | None = None
+    tool_errors: int | None = None
+    tool_names: list[str] | None = None  # unique tool names used in run
     # Run shape
-    step_count: Optional[int] = None
-    llm_calls: Optional[int] = None
-    images_count: Optional[int] = None
+    step_count: int | None = None
+    llm_calls: int | None = None
+    images_count: int | None = None
     # Subagents
-    subagents_spawned: Optional[int] = None
-    subagent_errors: Optional[int] = None
+    subagents_spawned: int | None = None
+    subagent_errors: int | None = None
     # Context health
-    compactions: Optional[int] = None
-    resets: Optional[int] = None
+    compactions: int | None = None
+    resets: int | None = None
     # Error
-    error: Optional[str] = None
+    error: str | None = None
     # Deployment context
-    environment: Optional[str] = None
-    version: Optional[str] = None
+    environment: str | None = None
+    version: str | None = None
     # Privacy
-    redaction_policy_version: Optional[str] = None
+    redaction_policy_version: str | None = None
     # Subagent / multi-agent tracing
-    parent_trace_id: Optional[str] = None
+    parent_trace_id: str | None = None
     # Client-side cost estimate (plugin-calculated from local pricing table)
-    estimated_cost_usd: Optional[float] = None
+    estimated_cost_usd: float | None = None
     # Catch-all for future fields
-    metadata: Optional[dict[str, Any]] = None
+    metadata: dict[str, Any] | None = None
 
 
 class EventResponse(BaseModel):

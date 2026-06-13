@@ -1,15 +1,19 @@
-from sqlalchemy.orm import Session
-from sqlalchemy import func, case, or_, text
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
+from sqlalchemy import case, func, or_, text
+from sqlalchemy.orm import Session
+
+from app.db_compat import trunc_day
 from app.models.event import Event
 from app.schemas.agent import (
-    AgentSummary, AgentDetail, RecentRun, CostByDay,
-    ErrorSummary, CostByModel, LatencyPercentiles,
+    AgentDetail,
+    AgentSummary,
+    CostByDay,
+    CostByModel,
+    ErrorSummary,
+    LatencyPercentiles,
+    RecentRun,
 )
-from app.db_compat import trunc_day
-
 
 # Infrastructure agent IDs that should never appear in the user-facing agents list
 _EXCLUDED_AGENTS = {"openclaw-gateway"}
@@ -26,7 +30,7 @@ _NOT_SESSION_METRICS = or_(
 
 def _retention_since(org_id: str, db: Session) -> datetime:
     # Self-hosted: no retention limit - return epoch zero so all data is visible
-    return datetime.min.replace(tzinfo=timezone.utc)
+    return datetime.min.replace(tzinfo=UTC)
 
 
 def get_agents_summary(org_id: str, db: Session, limit: int = 200, offset: int = 0) -> list[AgentSummary]:
@@ -136,7 +140,7 @@ def _percentiles(db: Session, org_id: str, agent_id: str, since: datetime) -> tu
     return (_r(row[0]), _r(row[1]), _r(row[2])) if row else (None, None, None)
 
 
-def get_agent_detail(org_id: str, agent_id: str, db: Session) -> Optional[AgentDetail]:
+def get_agent_detail(org_id: str, agent_id: str, db: Session) -> AgentDetail | None:
     since = _retention_since(org_id, db)
     # Summary stats
     row = (
@@ -167,7 +171,7 @@ def get_agent_detail(org_id: str, agent_id: str, db: Session) -> Optional[AgentD
     )
 
     # Cost by day (last 30 days, capped by plan retention)
-    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
     cost_since = max(since, thirty_days_ago)
     daily_rows = (
         db.query(

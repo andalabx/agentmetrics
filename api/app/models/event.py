@@ -1,5 +1,19 @@
 import uuid
-from sqlalchemy import Column, String, Float, Integer, DateTime, Text, Index, Uuid, JSON, ForeignKey, func
+
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    Uuid,
+    func,
+)
+
 from app.database import Base
 
 

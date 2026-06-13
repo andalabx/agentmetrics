@@ -9,8 +9,7 @@ import json
 import logging
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -22,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # ── Percentile helper (SQLite path) ──────────────────────────────────────────
 
-def _percentile(sorted_vals: list[float], p: float) -> Optional[float]:
+def _percentile(sorted_vals: list[float], p: float) -> float | None:
     """Linear interpolation percentile — matches PostgreSQL PERCENTILE_CONT."""
     if not sorted_vals:
         return None
@@ -44,7 +43,7 @@ def run_hourly_aggregation(db: Session) -> None:
     Safe to call multiple times (upsert logic on both engines).
     Monthly usage is handled separately by run_monthly_aggregation().
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     try:
         if IS_SQLITE:
             hour_start = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)
@@ -86,7 +85,7 @@ def backfill_missing_hours(db: Session, lookback_hours: int = 48) -> None:
     metrics_hourly row.  Ensures dashboards show correct data after downtime.
     """
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         filled = 0
         for h in range(lookback_hours, 0, -1):
             hour_start = (now - timedelta(hours=h)).replace(minute=0, second=0, microsecond=0)

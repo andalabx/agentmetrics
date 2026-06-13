@@ -4,12 +4,12 @@ Individual run detail endpoint - exposes a single event by trace_id.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.organization import Organization
 from app.deps import get_current_org_from_jwt
+from app.models.organization import Organization
 
 logger = logging.getLogger(__name__)
 

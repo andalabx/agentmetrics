@@ -4,13 +4,11 @@ Reads enabled alert_rules, checks metrics_hourly data,
 fires alert_events when thresholds are crossed.
 """
 import logging
-from datetime import datetime, timezone
+import time
+from threading import Lock
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
-import time
-from threading import Lock
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +19,7 @@ _DEBOUNCE_SECONDS = 60  # 1 minute
 
 # Map frontend metric names → metrics_hourly column names (migration 007)
 _METRIC_COLUMN = {
-    "error_rate":   "error_rate",       # 0.0–1.0 fraction
+    "error_rate":   "error_rate",       # 0.0-1.0 fraction
     "cost_usd":     "total_cost_usd",   # total cost in window
     "duration_ms":  "p95_duration_ms",  # p95 latency as proxy for "duration"
     "loop_count":   "loop_count",
@@ -38,11 +36,16 @@ _OP_NORMALIZE = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 
 def _check_threshold(op: str, actual: float, threshold: float) -> bool:
     op = _OP_NORMALIZE.get(op, op)
-    if op == ">":  return actual > threshold
-    if op == ">=": return actual >= threshold
-    if op == "<":  return actual < threshold
-    if op == "<=": return actual <= threshold
-    if op == "==": return actual == threshold
+    if op == ">":
+        return actual > threshold
+    if op == ">=":
+        return actual >= threshold
+    if op == "<":
+        return actual < threshold
+    if op == "<=":
+        return actual <= threshold
+    if op == "==":
+        return actual == threshold
     return False
 
 
