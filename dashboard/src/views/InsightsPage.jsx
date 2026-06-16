@@ -4,8 +4,9 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell,
   ResponsiveContainer, Tooltip as RTooltip,
   RadarChart, Radar, PolarGrid, PolarAngleAxis,
+  AreaChart, Area,
 } from "recharts";
-import { getAgents, getAgentNames, getRecommendations, updateRecommendation } from "../api/agents";
+import { getAgents, getAgentNames, getRecommendations, updateRecommendation, getDailyCost } from "../api/agents";
 import Seo from "../components/Seo";
 import AppLayout from "../components/layout/AppLayout";
 import usePolling from "../hooks/usePolling";
@@ -31,10 +32,8 @@ function fmtCost(v) {
 }
 
 const TABS = [
-  { id: "performance", label: "Performance" },
-  { id: "cost",        label: "Cost" },
-  { id: "reliability", label: "Reliability" },
-  { id: "optimize",    label: "Optimize" },
+  { id: "cost",     label: "Cost" },
+  { id: "optimize", label: "Optimize" },
 ];
 
 const PALETTE = ["#6366f1", "#22d3ee", "#F59E0B", "#10B981", "#EF4444", "#8B5CF6", "#EC4899", "#3B82F6"];
@@ -168,6 +167,18 @@ function PerformanceTab({ agents, namesMap, onAgent }) {
 
 // ─── Cost tab ─────────────────────────────────────────────────────────────────
 
+function DailySpendTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0]?.payload ?? {};
+  return (
+    <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "8px 14px", fontSize: 12 }}>
+      <p style={{ color: "var(--text-2)", marginBottom: 4 }}>{label}</p>
+      <p style={{ color: "#F59E0B", fontWeight: 600 }}>{fmtCost(d.cost_usd)}</p>
+      <p style={{ color: "var(--text-2)" }}>{d.runs ?? 0} runs</p>
+    </div>
+  );
+}
+
 function CostTab({ agents, namesMap, onAgent }) {
   const sorted = [...agents].sort((a, b) => b.total_cost - a.total_cost);
   const totalCost = agents.reduce((s, a) => s + a.total_cost, 0);
@@ -180,6 +191,21 @@ function CostTab({ agents, namesMap, onAgent }) {
     cost:     a.total_cost,
   }));
 
+  const [dailyWindow, setDailyWindow] = useState(30);
+  const [dailyData, setDailyData]     = useState([]);
+
+  useEffect(() => {
+    getDailyCost(dailyWindow)
+      .then(({ data }) => {
+        const formatted = data.map((r) => ({
+          ...r,
+          label: new Date(r.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        }));
+        setDailyData(formatted);
+      })
+      .catch(() => setDailyData([]));
+  }, [dailyWindow]);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="grid gap-4 sm:grid-cols-3">
@@ -187,6 +213,42 @@ function CostTab({ agents, namesMap, onAgent }) {
         <Stat label="Avg cost per run" value={fmtCost(avgCostPerRun)} valueClass="text-cost" delay={60} />
         <Stat label="Highest spender" value={sorted[0] ? agentDisplayName(sorted[0].agent_id, namesMap) : "N/A"}
           sub={sorted[0] ? `${fmtCost(sorted[0].total_cost)} total` : ""} valueClass="text-cost" delay={120} />
+      </div>
+
+      <div className="fade-in-up delay-150 rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card">
+        <div className="flex items-center justify-between mb-5">
+          <p className="text-[10px] uppercase tracking-[0.2em] text-t2">Daily spend</p>
+          <div className="flex gap-1">
+            {[7, 30, 90].map((d) => (
+              <button
+                key={d}
+                onClick={() => setDailyWindow(d)}
+                className={`rounded-lg border px-3 py-1 text-[11px] font-semibold transition-colors ${
+                  dailyWindow === d
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-500"
+                    : "border-[var(--border)] bg-[var(--surface-2)] text-t2 hover:text-t1"
+                }`}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={180}>
+          <AreaChart data={dailyData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="amberGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%"  stopColor="#F59E0B" stopOpacity={0.25} />
+                <stop offset="95%" stopColor="#F59E0B" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: "var(--text-3)", fontSize: 10 }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+            <YAxis tick={{ fill: "var(--text-3)", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={fmtCost} width={52} />
+            <RTooltip content={<DailySpendTooltip />} cursor={{ stroke: "var(--border)", strokeWidth: 1 }} />
+            <Area type="monotone" dataKey="cost_usd" stroke="#F59E0B" strokeWidth={2} fill="url(#amberGrad)" dot={false} activeDot={{ r: 4, fill: "#F59E0B", stroke: "var(--surface)", strokeWidth: 2 }} />
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
 
       <div className="fade-in-up delay-200 rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card">
@@ -528,7 +590,7 @@ export default function InsightsPage() {
       const p = new URLSearchParams(window.location.search).get("tab");
       if (p && validTabs.includes(p)) return p;
     }
-    return "performance";
+    return "cost";
   });
 
   const fetchData = useCallback(async () => {
@@ -552,7 +614,7 @@ export default function InsightsPage() {
 
   const switchTab = (id) => {
     setTab(id);
-    const url = id === "performance" ? "/insights" : `/insights?tab=${id}`;
+    const url = id === "cost" ? "/cost" : `/cost?tab=${id}`;
     window.history.replaceState(null, "", url);
   };
 
@@ -565,7 +627,7 @@ export default function InsightsPage() {
         <section className="fade-in-up rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card sm:p-7">
           <h1 className="text-3xl font-bold tracking-tight text-t1 sm:text-4xl">Cost</h1>
           <p className="mt-2 text-sm leading-7 text-t2">
-            Cost, performance, reliability, and optimization across every agent.
+            Spend and optimization opportunities across every agent.
           </p>
         </section>
 
@@ -587,23 +649,21 @@ export default function InsightsPage() {
           ))}
         </div>
 
-        {tab !== "optimize" && loading ? (
+        {tab === "cost" && loading ? (
           <div className="flex min-h-[40vh] items-center justify-center">
             <div className="flex flex-col items-center gap-3">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--border)] border-t-accent" />
               <p className="text-sm text-t2">Loading insights…</p>
             </div>
           </div>
-        ) : tab !== "optimize" && agents.length === 0 ? (
+        ) : tab === "cost" && agents.length === 0 ? (
           <div className="rounded-[28px] border border-[var(--border)] bg-surface p-10 text-center shadow-card">
             <p className="text-t2">No agents tracked yet. Instrument your first agent to see insights here.</p>
           </div>
         ) : (
           <>
-            {tab === "performance" && <PerformanceTab agents={agents} namesMap={namesMap} onAgent={onAgent} />}
-            {tab === "cost"        && <CostTab        agents={agents} namesMap={namesMap} onAgent={onAgent} />}
-            {tab === "reliability" && <ReliabilityTab agents={agents} namesMap={namesMap} onAgent={onAgent} />}
-            {tab === "optimize"    && <OptimizeTab />}
+            {tab === "cost"     && <CostTab agents={agents} namesMap={namesMap} onAgent={onAgent} />}
+            {tab === "optimize" && <OptimizeTab />}
           </>
         )}
       </div>

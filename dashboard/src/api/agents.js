@@ -26,3 +26,5 @@ export const getWeekComparison = () => client.get("/stats/week-comparison");
 
 export const getAgentHourly = (agentId) =>
   client.get(`/agents/${encodeURIComponent(agentId)}/hourly`);
+
+export const getDailyCost = (days = 30) => client.get("/stats/daily-cost", { params: { days } });

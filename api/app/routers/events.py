@@ -1,20 +1,29 @@
+from __future__ import annotations
+
+import uuid
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.pricing import calculate_cost
+from app.core.pricing import get_price
+from app.core.rate_limit import check_rate_limit
 from app.database import IS_SQLITE, get_db
-from app.deps import get_default_org
+from app.deps import get_current_org_from_api_key
 from app.models.event import Event
 from app.models.organization import Organization
 from app.schemas.event import BatchEventCreate, BatchEventResponse, EventCreate, EventResponse
 
 router = APIRouter(prefix="/events", tags=["events"])
 
-def _build_event(org_id, body: EventCreate) -> Event:
+def _build_event(org_id: uuid.UUID, body: EventCreate) -> Event:
     cost = body.cost_usd
     if body.model and body.input_tokens is not None and body.output_tokens is not None:
-        cost = calculate_cost(body.model, int(body.input_tokens), int(body.output_tokens))
+        prices = get_price(body.model)
+        if prices is not None:
+            cost = (body.input_tokens * prices["input"] + body.output_tokens * prices["output"]) / 1_000_000
+        else:
+            cost = body.cost_usd  # trust client-provided cost
 
     # Only fields that have no dedicated column go into run_metadata.
     # Fields promoted to columns in migration 012 are excluded to avoid storing them twice.
@@ -78,12 +87,14 @@ def ingest_event(
     body: EventCreate,
     background_tasks: BackgroundTasks,
     response: Response,
-    org: Organization = Depends(get_default_org),
+    org: Organization = Depends(get_current_org_from_api_key),
     db: Session = Depends(get_db),
-):
+) -> EventResponse:
+    check_rate_limit(str(org.id))
+
     existing = db.execute(
-        text("SELECT id FROM events WHERE org_id = :org_id AND trace_id = :trace_id LIMIT 1"),
-        {"org_id": str(org.id), "trace_id": body.trace_id},
+        text("SELECT id FROM events WHERE org_id = :org_id AND trace_id = :trace_id AND agent_id = :agent_id LIMIT 1"),
+        {"org_id": str(org.id), "trace_id": body.trace_id, "agent_id": body.agent_id},
     ).fetchone()
     if existing:
         return EventResponse(status="accepted", event_id=str(existing[0]))
@@ -102,12 +113,14 @@ def ingest_events_batch(
     body: BatchEventCreate,
     background_tasks: BackgroundTasks,
     response: Response,
-    org: Organization = Depends(get_default_org),
+    org: Organization = Depends(get_current_org_from_api_key),
     db: Session = Depends(get_db),
-):
+) -> BatchEventResponse:
     """Accept up to 100 events in a single request. Partial success is allowed."""
     import logging
     _logger = logging.getLogger("agentmetrics")
+
+    check_rate_limit(str(org.id), cost=len(body.events))
 
     incoming_trace_ids = [item.trace_id for item in body.events if item.trace_id]
     existing_trace_ids: set[str] = set()

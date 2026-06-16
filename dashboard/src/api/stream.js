@@ -1,3 +1,5 @@
+import { getStoredKey } from "./client";
+
 const BASE_URL = import.meta.env.VITE_API_URL ?? "";
 
 /**
@@ -16,7 +18,10 @@ export function openActivityStream(onEvent, onError, onStatus) {
     // Exchange for a short-lived ticket to avoid credentials in the SSE URL
     let ticket;
     try {
-      const res = await fetch(`${BASE_URL}/v1/activity/ticket`, { method: "POST" });
+      const res = await fetch(`${BASE_URL}/v1/activity/ticket`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${getStoredKey()}` },
+      });
       if (!res.ok) throw new Error(`Ticket exchange failed: ${res.status}`);
       ({ ticket } = await res.json());
     } catch {

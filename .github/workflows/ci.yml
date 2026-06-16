@@ -14,8 +14,8 @@ jobs:
     name: "API - lint"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2  # v5
         with:
           python-version: "3.12"
           cache: pip
@@ -26,8 +26,8 @@ jobs:
     name: "API - tests"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2  # v5
         with:
           python-version: "3.12"
           cache: pip
@@ -47,8 +47,8 @@ jobs:
     name: "SDK Python - lint"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2  # v5
         with:
           python-version: "3.12"
           cache: pip
@@ -61,8 +61,8 @@ jobs:
     name: "Dashboard - build"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4
         with:
           node-version: "20"
           cache: npm
@@ -84,7 +84,7 @@ jobs:
     needs: [api-lint, api-test, dashboard]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
       - name: Validate Docker Compose
         run: docker compose config --quiet
       - name: Build API image

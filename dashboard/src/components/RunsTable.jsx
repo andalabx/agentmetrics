@@ -32,7 +32,7 @@ function timeSince(dateStr) {
   return `${Math.floor(secs / 86400)}d ago`;
 }
 
-export default function RunsTable({ runs, onSelectRun, loadingMore, onLoadMore, hasMore }) {
+export default function RunsTable({ runs, onSelectRun, loadingMore, onLoadMore, hasMore, linkState }) {
   if (!runs?.length) {
     return <p className="py-8 text-center text-sm text-t2">No runs recorded yet.</p>;
   }
@@ -63,7 +63,8 @@ export default function RunsTable({ runs, onSelectRun, loadingMore, onLoadMore, 
               >
                 <td className="px-4 py-3 font-mono text-xs text-t2">
                   <Link
-                    href={`/runs/${encodeURIComponent(run.trace_id)}`}
+                    to={`/runs/${encodeURIComponent(run.trace_id)}`}
+                    state={linkState}
                     onClick={(e) => e.stopPropagation()}
                     className="rounded-lg bg-[var(--surface-2)] px-2 py-1 font-mono text-[11px] text-t1 transition-colors hover:bg-[var(--accent-bg)] hover:text-accent"
                   >

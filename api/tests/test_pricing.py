@@ -6,10 +6,10 @@ def test_known_model():
     assert cost == 0.75  # $0.15 + $0.60
 
 
-def test_unknown_model_falls_back():
-    # Unknown models use gpt-4o pricing ($2.50 + $10)
+def test_unknown_model_returns_zero():
+    # Unknown models return 0.0 (no longer falls back to gpt-4o pricing)
     cost = calculate_cost("unknown-model-xyz", input_tokens=1_000_000, output_tokens=1_000_000)
-    assert cost == 12.50
+    assert cost == 0.0
 
 
 def test_zero_tokens():

@@ -12,7 +12,16 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
-# In-memory debounce: don't re-evaluate the same org more than once per 5 minutes
+_ALLOWED_SLACK_PREFIXES = ("https://hooks.slack.com/", "https://hooks.slack-gov.com/")
+
+
+def _is_safe_webhook(url: str) -> bool:
+    return any(url.startswith(p) for p in _ALLOWED_SLACK_PREFIXES)
+
+
+# NOTE: Per-process in-memory debounce. In multi-replica deployments each replica
+# maintains independent state — alerts may fire N times per threshold breach.
+# Replace with a Redis-backed counter for multi-replica setups.
 _last_realtime_eval: dict[str, float] = {}
 _debounce_lock = Lock()
 _DEBOUNCE_SECONDS = 60  # 1 minute
@@ -227,13 +236,21 @@ def _query_events_fallback(
 
 def _send_alert_notification(rule: dict, actual_value: float, threshold: float) -> bool:
     """Send Slack notification if a webhook is configured."""
-    if not rule.get("slack_webhook"):
+    webhook_url = rule.get("slack_webhook") or rule.get("org_settings", {}).get("slack_webhook", "")
+    if not webhook_url:
         return False
-    from app.services.email_service import send_slack_notification
-    return send_slack_notification(
-        webhook_url=rule["slack_webhook"],
-        rule=rule, actual_value=actual_value, threshold=threshold,
-    )
+    if _is_safe_webhook(webhook_url):
+        from app.services.email_service import send_slack_notification
+        return send_slack_notification(
+            webhook_url=webhook_url,
+            rule=rule, actual_value=actual_value, threshold=threshold,
+        )
+    else:
+        logger.warning(
+            "[alerts] Rejected webhook URL that does not match allowed Slack prefixes "
+            "(SSRF guard): %.80s", webhook_url,
+        )
+        return False
 
 
 def evaluate_alerts_for_org(org_id: str, db: Session) -> None:

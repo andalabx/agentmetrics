@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from typing import Any
@@ -10,9 +11,18 @@ from agentmetrics.tracker import _estimate_cost
 from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
 
+logger = logging.getLogger(__name__)
+
+# INT-18: maximum depth for the parent chain walk (cycle guard)
+_MAX_CHAIN_DEPTH = 50
+
+# INT-17: maximum number of concurrent tracked runs (memory cap)
+_MAX_TRACKED_RUNS = 5_000
+
 
 class _RunState:
     __slots__ = (
+        "_counted_errors",
         "agent_id",
         "cache_read_tokens",
         "cache_write_tokens",
@@ -39,6 +49,7 @@ class _RunState:
         self.tool_calls       = 0
         self.tool_errors      = 0
         self.tool_names: set[str] = set()
+        self._counted_errors: set[str] = set()  # INT-19: dedup error IDs
         self.model: str | None = None
         self.status           = "success"
         self.error: str | None = None
@@ -74,6 +85,17 @@ class AgentMetricsCallback(BaseCallbackHandler):
         self._tool_names_pending: dict[str, str] = {}
 
 
+    def _track_run(self, run_id: str, data: _RunState) -> None:
+        """INT-17: Store a run state with a safety cap to prevent unbounded memory growth."""
+        if len(self._runs) >= _MAX_TRACKED_RUNS:
+            logger.warning(
+                "agentmetrics: _runs cap (%d) reached, dropping oldest entry",
+                _MAX_TRACKED_RUNS,
+            )
+            oldest = next(iter(self._runs))
+            del self._runs[oldest]
+        self._runs[run_id] = data
+
     def on_chain_start(
         self,
         serialized: dict[str, Any],
@@ -85,7 +107,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
     ) -> None:
         rid = str(run_id)
         if parent_run_id is None:
-            self._runs[rid] = _RunState(self._agent_id)
+            self._track_run(rid, _RunState(self._agent_id))
         else:
             self._parent_map[rid] = str(parent_run_id)
 
@@ -113,7 +135,7 @@ class AgentMetricsCallback(BaseCallbackHandler):
             if run:
                 run.status = "failed"
                 run.error  = str(error)[:500]
-            self._emit(str(run_id))
+            self._emit(str(run_id))  # _emit already pops from _runs (INT-17)
 
 
     def on_llm_start(
@@ -177,6 +199,20 @@ class AgentMetricsCallback(BaseCallbackHandler):
         usage = lo.get("token_usage") or lo.get("usage") or {}
         run.input_tokens  += usage.get("prompt_tokens", 0) or 0
         run.output_tokens += usage.get("completion_tokens", 0) or 0
+        # INT-16: also extract cache tokens from the llm_output token_usage path
+        token_usage = lo.get("token_usage") or {}
+        cache_read = (
+            token_usage.get("cache_read_input_tokens")
+            or token_usage.get("cache_read_tokens")
+            or 0
+        )
+        cache_write = (
+            token_usage.get("cache_creation_input_tokens")
+            or token_usage.get("cache_write_tokens")
+            or 0
+        )
+        run.cache_read_tokens  += cache_read
+        run.cache_write_tokens += cache_write
         if not run.model:
             run.model = lo.get("model_name") or lo.get("model")
 
@@ -233,22 +269,39 @@ class AgentMetricsCallback(BaseCallbackHandler):
         rid = str(run_id)
         run = self._find_top_run(rid)
         if run:
-            run.tool_calls  += 1
-            run.tool_errors += 1
+            run.tool_calls += 1
+            # INT-19: deduplicate error counting to avoid double-counting the same failure
+            if rid not in run._counted_errors:
+                run._counted_errors.add(rid)
+                run.tool_errors += 1
             name = self._tool_names_pending.pop(rid, None)
             if name:
                 run.tool_names.add(name)
+        # Clean up tool-level entries from parent map (INT-17: prevent unbounded growth)
+        self._parent_map.pop(rid, None)
+        self._tool_names_pending.pop(rid, None)
 
 
-    def _find_top_run(self, run_id: str) -> _RunState | None:
-        """Walk the parent chain from run_id upward to find a top-level RunState."""
+    def _find_top_run(self, run_id: str, depth: int = 0) -> _RunState | None:
+        """Walk the parent chain from run_id upward to find a top-level RunState.
+
+        INT-18: depth limit prevents infinite loops from cyclic parent references.
+        """
         seen: set[str] = set()
         rid = run_id
+        current_depth = 0
         while rid and rid not in seen:
+            if current_depth > _MAX_CHAIN_DEPTH:
+                logger.warning(
+                    "agentmetrics: parent chain depth exceeded %d at run %s, stopping walk",
+                    _MAX_CHAIN_DEPTH, rid,
+                )
+                return None
             seen.add(rid)
             if rid in self._runs:
                 return self._runs[rid]
             rid = self._parent_map.get(rid, "")
+            current_depth += 1
         return None
 
     def _emit(self, run_id: str) -> None:

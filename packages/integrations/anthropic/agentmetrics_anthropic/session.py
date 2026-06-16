@@ -100,6 +100,10 @@ def _process_event(state: _SessionState, event: Any) -> bool:
 
     # Session terminated → run complete
     elif etype == "session.status_terminated":
+        state.status = "failed"
+        # INT-13: if terminated due to error (not normal completion), count it
+        if getattr(event, "error", None) is not None:
+            state.tool_errors = getattr(state, "tool_errors", 0) + 1
         return True
 
     return False
@@ -135,11 +139,15 @@ class AgentMetricsSessionTracker:
         self._client   = HttpClient(api_key=api_key, base_url=base_url)
         self._agent_id = agent_id
 
+    def _fresh_state(self, session_id: str) -> _SessionState:
+        """INT-14: Create a fresh per-run state, resetting all counters and the _emitted flag."""
+        return _SessionState(self._agent_id, session_id)
+
     def stream(self, client: Any, session_id: str, **kwargs: Any) -> _SyncStreamContext:
-        return _SyncStreamContext(self._client, self._agent_id, client, session_id, kwargs)
+        return _SyncStreamContext(self._client, self._agent_id, client, session_id, kwargs, self._fresh_state)
 
     def astream(self, client: Any, session_id: str, **kwargs: Any) -> _AsyncStreamContext:
-        return _AsyncStreamContext(self._client, self._agent_id, client, session_id, kwargs)
+        return _AsyncStreamContext(self._client, self._agent_id, client, session_id, kwargs, self._fresh_state)
 
     def flush(self, timeout: float = 10.0) -> None:
         self._client.flush(timeout=timeout)
@@ -153,16 +161,22 @@ class _SyncStreamContext:
         client: Any,
         session_id: str,
         kwargs: dict,
+        fresh_state: Any = None,
     ) -> None:
-        self._http       = http
-        self._agent_id   = agent_id
-        self._client     = client
-        self._session_id = session_id
-        self._kwargs     = kwargs
+        self._http        = http
+        self._agent_id    = agent_id
+        self._client      = client
+        self._session_id  = session_id
+        self._kwargs      = kwargs
+        self._fresh_state = fresh_state
         self._state: _SessionState | None = None
 
     def __enter__(self) -> _SyncTrackingIter:
-        self._state = _SessionState(self._agent_id, self._session_id)
+        # INT-14: use the factory to create a fresh state, resetting all per-run fields
+        if self._fresh_state is not None:
+            self._state = self._fresh_state(self._session_id)
+        else:
+            self._state = _SessionState(self._agent_id, self._session_id)
         raw = self._client.beta.sessions.events.stream(
             self._session_id, **self._kwargs
         )
@@ -209,16 +223,22 @@ class _AsyncStreamContext:
         client: Any,
         session_id: str,
         kwargs: dict,
+        fresh_state: Any = None,
     ) -> None:
-        self._http       = http
-        self._agent_id   = agent_id
-        self._client     = client
-        self._session_id = session_id
-        self._kwargs     = kwargs
+        self._http        = http
+        self._agent_id    = agent_id
+        self._client      = client
+        self._session_id  = session_id
+        self._kwargs      = kwargs
+        self._fresh_state = fresh_state
         self._state: _SessionState | None = None
 
     async def __aenter__(self) -> _AsyncTrackingIter:
-        self._state = _SessionState(self._agent_id, self._session_id)
+        # INT-14: use the factory to create a fresh state, resetting all per-run fields
+        if self._fresh_state is not None:
+            self._state = self._fresh_state(self._session_id)
+        else:
+            self._state = _SessionState(self._agent_id, self._session_id)
         raw = self._client.beta.sessions.events.stream(
             self._session_id, **self._kwargs
         )

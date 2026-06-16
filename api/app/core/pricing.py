@@ -1,3 +1,10 @@
+import logging
+
+# Update this date whenever model prices are refreshed.
+PRICE_TABLE_UPDATED = "2026-06-16"
+
+logger = logging.getLogger(__name__)
+
 # Model pricing -- per 1M tokens (USD)
 # Update monthly to match provider billing
 MODEL_PRICES: dict[str, dict[str, float]] = {
@@ -148,9 +155,6 @@ MODEL_PRICES: dict[str, dict[str, float]] = {
     "ollama/gemma2":              {"input": 0.0, "output": 0.0},
 }
 
-DEFAULT_PRICE = {"input": 2.50, "output": 10.00}  # fallback to gpt-4o pricing
-
-
 def _fuzzy_lookup(model: str) -> dict[str, float] | None:
     """
     Try progressively looser matches for model strings we don't have exact entries for.
@@ -176,9 +180,20 @@ def _fuzzy_lookup(model: str) -> dict[str, float] | None:
     return None
 
 
+def get_price(model: str) -> dict[str, float] | None:
+    """Return price dict with 'input' and 'output' per 1M tokens, or None if unknown."""
+    prices = MODEL_PRICES.get(model) or _fuzzy_lookup(model)
+    if prices is None:
+        logger.debug("[pricing] Unknown model %r — cost not estimated", model)
+        return None
+    return prices
+
+
 def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Calculate USD cost from token counts. Returns 0.0 if tokens not provided."""
-    prices = MODEL_PRICES.get(model) or _fuzzy_lookup(model) or DEFAULT_PRICE
+    """Calculate USD cost from token counts. Returns 0.0 for unknown models."""
+    prices = get_price(model)
+    if prices is None:
+        return 0.0
     return (input_tokens * prices["input"] + output_tokens * prices["output"]) / 1_000_000
 
 

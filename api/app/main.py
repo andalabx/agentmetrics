@@ -1,7 +1,10 @@
+from __future__ import annotations
+
 import gzip
 import logging
 import sys
 import time
+from collections.abc import Awaitable, Callable
 
 from alembic import command
 from alembic.config import Config
@@ -30,6 +33,9 @@ from app.worker import start_worker, stop_worker
 logger = logging.getLogger("agentmetrics")
 
 
+_MAX_DECOMPRESSED_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
 class GzipRequestMiddleware:
     """Transparently decompress gzip-encoded request bodies before routing."""
 
@@ -48,10 +54,20 @@ class GzipRequestMiddleware:
                     chunks.append(msg.get("body", b""))
                     more = msg.get("more_body", False)
                 raw = b"".join(chunks)
+
                 try:
-                    raw = gzip.decompress(raw)
-                except Exception:
-                    pass  # pass malformed body through unchanged
+                    decompressed = gzip.decompress(raw)
+                except (gzip.BadGzipFile, OSError, EOFError):
+                    from starlette.responses import Response as _Resp
+                    err = _Resp("Invalid gzip body", status_code=400, media_type="text/plain")
+                    await err(scope, receive, send)
+                    return
+                if len(decompressed) > _MAX_DECOMPRESSED_BYTES:
+                    from starlette.responses import Response as _Resp
+                    err = _Resp("Decompressed body exceeds 10MB limit", status_code=413, media_type="text/plain")
+                    await err(scope, receive, send)
+                    return
+                raw = decompressed
 
                 # Rebuild scope without the content-encoding header
                 new_headers = [
@@ -114,6 +130,12 @@ def run_migrations() -> None:
     """Run alembic migrations on startup - safe because alembic is idempotent."""
     _configure_logging()
     logger.info("[startup] ENVIRONMENT=%s", settings.ENVIRONMENT)
+
+    if getattr(settings, "bind_host", "127.0.0.1") == "0.0.0.0":
+        logger.warning(
+            "AgentMetrics API is bound to 0.0.0.0. Ensure this port is not publicly "
+            "accessible. For internet-facing deployments, add authentication."
+        )
     from app.database import IS_SQLITE, Base, engine
     if IS_SQLITE:
         # Import all models so metadata is populated before create_all
@@ -139,38 +161,60 @@ def run_migrations() -> None:
     except Exception as e:
         logger.warning("[startup] Backfill warning (non-fatal): %s", e)
 
-    # First-run: create default org and print SDK key to stdout
+    # First-run: create default org and print SDK key to stderr
     _provision_default_org()
 
     start_worker()
 
 
 def _provision_default_org() -> None:
-    """Create the default organization on first run."""
+    """Create the default organization and API key on first run."""
+    import hashlib
+    import secrets
+
     try:
         from app.database import SessionLocal
         from app.models.organization import Organization
 
         db = SessionLocal()
         try:
-            if db.query(Organization).first():
-                return  # already provisioned
+            existing = db.query(Organization).first()
+            if existing:
+                # Already provisioned — check if key hash is missing (upgrade path)
+                if existing.sdk_key_hash is None:
+                    raw_key = "am_" + secrets.token_urlsafe(32)
+                    existing.sdk_key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+                    db.commit()
+                    _print_key_banner(raw_key)
+                return
 
-            org = Organization(email="admin@localhost", company_name="My Agents")
+            raw_key = "am_" + secrets.token_urlsafe(32)
+            key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+            org = Organization(
+                email="admin@localhost",
+                company_name="My Agents",
+                sdk_key_hash=key_hash,
+            )
             db.add(org)
             db.commit()
-
-            sep = "=" * 60
-            print(f"\n{sep}", flush=True)
-            print("  AgentMetrics is ready", flush=True)
-            print(f"  Dashboard : {settings.FRONTEND_URL}", flush=True)
-            print(f"  API docs  : {settings.API_URL}/docs", flush=True)
-            print(f"{sep}\n", flush=True)
+            _print_key_banner(raw_key)
             logger.info("[startup] Default organization provisioned")
         finally:
             db.close()
     except Exception as e:
         logger.warning("[startup] First-run provisioning failed (non-fatal): %s", e)
+
+
+def _print_key_banner(raw_key: str) -> None:
+    sep = "=" * 60
+    print(f"\n{sep}", file=sys.stderr, flush=True)
+    print("  AgentMetrics is ready", file=sys.stderr, flush=True)
+    print(f"  Dashboard : {settings.FRONTEND_URL}", file=sys.stderr, flush=True)
+    print(f"  API docs  : {settings.API_URL}/docs", file=sys.stderr, flush=True)
+    print("", file=sys.stderr, flush=True)
+    print(f"  API Key   : {raw_key}", file=sys.stderr, flush=True)
+    print("  ^ Save this key — it is shown only once.", file=sys.stderr, flush=True)
+    print(f"{sep}\n", file=sys.stderr, flush=True)
 
 
 @app.on_event("shutdown")
@@ -179,7 +223,7 @@ def shutdown_worker() -> None:
 
 
 @app.middleware("http")
-async def access_log(request: Request, call_next) -> Response:
+async def access_log(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     start = time.perf_counter()
     response = await call_next(request)
     ms = (time.perf_counter() - start) * 1000
@@ -188,7 +232,7 @@ async def access_log(request: Request, call_next) -> Response:
 
 
 @app.middleware("http")
-async def security_headers(request: Request, call_next) -> Response:
+async def security_headers(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
@@ -211,7 +255,7 @@ app.include_router(audit.router, prefix="/v1")
 
 
 @app.get("/health")
-def health():
+def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
@@ -230,9 +274,9 @@ if _static_dir.is_dir():
         app.mount("/assets", _StaticFiles(directory=str(_assets)), name="vite-assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
-    def _spa(full_path: str):
+    def _spa(full_path: str) -> _FileResponse:
         return _FileResponse(str(_static_dir / "index.html"))
 else:
     @app.get("/", include_in_schema=False)
-    def root():
+    def root() -> RedirectResponse:
         return RedirectResponse(url="/health")

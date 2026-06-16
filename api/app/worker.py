@@ -27,6 +27,9 @@ _RETENTION_DAYS = {
     "enterprise":  0,
 }
 
+# Track plans that failed retention on the last tick (for retry logging)
+_retention_failures: set = set()
+
 
 def _job_aggregate() -> None:
     db = SessionLocal()
@@ -56,7 +59,10 @@ def _job_retention() -> None:
     from sqlalchemy import text
 
     from app.database import IS_SQLITE
+
+    global _retention_failures
     db = SessionLocal()
+    failed_this_tick: set = set()
     try:
         for plan, days in _RETENTION_DAYS.items():
             if days == 0:
@@ -79,11 +85,19 @@ def _job_retention() -> None:
                 if deleted:
                     logger.info("[retention] Deleted %d events older than %dd for plan=%s",
                                 deleted, days, plan)
+                _retention_failures.discard(plan)
             except Exception as exc:
-                logger.error("[retention] Failed for plan=%s: %s", plan, exc)
+                logger.error("[retention] Plan %r failed: %s", plan, exc, exc_info=True)
+                failed_this_tick.add(plan)
                 db.rollback()
                 continue
         db.commit()
+        _retention_failures.update(failed_this_tick)
+        if _retention_failures:
+            logger.warning(
+                "[retention] %d plan(s) failed this tick and will be retried: %s",
+                len(_retention_failures), _retention_failures,
+            )
     finally:
         db.close()
 
@@ -105,6 +119,7 @@ def start_worker() -> None:
         id="hourly_aggregate",
         replace_existing=True,
         misfire_grace_time=300,
+        coalesce=True,
     )
 
     # Alert evaluation at :10 (after aggregation)
@@ -114,6 +129,7 @@ def start_worker() -> None:
         id="evaluate_alerts",
         replace_existing=True,
         misfire_grace_time=300,
+        coalesce=True,
     )
 
     # Monthly usage — daily at 03:00 UTC (full-month scan, no point running every hour)
@@ -123,6 +139,7 @@ def start_worker() -> None:
         id="monthly_aggregate",
         replace_existing=True,
         misfire_grace_time=3600,
+        coalesce=True,
     )
 
     # Data retention — daily at 03:30 UTC
@@ -131,7 +148,8 @@ def start_worker() -> None:
         CronTrigger(hour=3, minute=30),
         id="data_retention",
         replace_existing=True,
-        misfire_grace_time=3600,
+        misfire_grace_time=3600,  # run within 1 hour of missed fire
+        coalesce=True,
     )
 
     _scheduler.start()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from typing import Any
@@ -13,6 +14,30 @@ from agents.tracing.spans import (
     HandoffSpanData,
     LLMSpanData,
 )
+
+logger = logging.getLogger(__name__)
+
+# INT-22: singleton guard — register the processor only once per process
+_PROCESSOR_REGISTERED = False
+_PROCESSOR_LOCK = __import__("threading").Lock()
+
+
+# INT-20: helper to try both known cache token attribute names
+def _get_cached_tokens(details: Any) -> int:
+    """Return cached token count, trying both known attribute/key names."""
+    if details is None:
+        return 0
+    if isinstance(details, dict):
+        return (
+            details.get("cached_tokens")
+            or details.get("cached_input_tokens")
+            or 0
+        )
+    return (
+        getattr(details, "cached_tokens", None)
+        or getattr(details, "cached_input_tokens", None)
+        or 0
+    )
 
 
 class _TraceState:
@@ -104,15 +129,15 @@ class AgentMetricsProcessor(TracingProcessor):
             if hasattr(usage, "input_tokens"):
                 state.input_tokens  += getattr(usage, "input_tokens", 0) or 0
                 state.output_tokens += getattr(usage, "output_tokens", 0) or 0
-                # OpenAI Agents SDK stores cached tokens in input_tokens_details
+                # INT-20: use helper to try both cached_tokens and cached_input_tokens
                 details = getattr(usage, "input_tokens_details", None) or {}
-                if hasattr(details, "cached_tokens"):
-                    state.cache_read_tokens += getattr(details, "cached_tokens", 0) or 0
-                elif hasattr(details, "get"):
-                    state.cache_read_tokens += details.get("cached_tokens", 0) or 0
+                state.cache_read_tokens += _get_cached_tokens(details)
             elif isinstance(usage, dict):
                 state.input_tokens  += usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0) or 0
                 state.output_tokens += usage.get("output_tokens", 0) or usage.get("completion_tokens", 0) or 0
+                # INT-20: also check dict path for cached tokens
+                details = usage.get("input_tokens_details") or {}
+                state.cache_read_tokens += _get_cached_tokens(details)
             if not state.model:
                 resp = getattr(data, "output", None)
                 if resp:
@@ -176,3 +201,31 @@ class AgentMetricsProcessor(TracingProcessor):
         if est is not None:
             payload["estimated_cost_usd"] = est
         self._client.fire_and_forget(payload)
+
+
+def register(
+    api_key: str,
+    agent_id: str = "openai-agent",
+    base_url: str = "http://localhost:8099",
+) -> None:
+    """
+    INT-22: Register the AgentMetrics processor with a singleton guard so it is
+    added at most once per process, even if called multiple times.
+    """
+    global _PROCESSOR_REGISTERED
+    with _PROCESSOR_LOCK:
+        if _PROCESSOR_REGISTERED:
+            logger.debug(
+                "agentmetrics: OpenAI Agents processor already registered, skipping"
+            )
+            return
+        try:
+            from agents import add_trace_processor
+            add_trace_processor(AgentMetricsProcessor(
+                api_key=api_key, agent_id=agent_id, base_url=base_url
+            ))
+            _PROCESSOR_REGISTERED = True
+        except (ImportError, AttributeError) as exc:
+            logger.debug(
+                "agentmetrics: could not register OpenAI Agents processor: %s", exc
+            )

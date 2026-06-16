@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import functools
 import logging
@@ -5,12 +7,76 @@ import random
 import threading
 import time
 import uuid
+from collections.abc import AsyncGenerator, Callable, Generator
 from contextvars import ContextVar
 from typing import Any, ClassVar
 
 from agentmetrics.http_client import HttpClient
 
+# SDK-07: Named constant for tool-loop detection threshold
+_TOOL_LOOP_THRESHOLD = 3  # consecutive identical tool calls marks run as failed
+
+# SEC-J01: Module-level lock to prevent monkey-patch race conditions
+_PATCH_LOCK = threading.Lock()
+
+# Sentinel attribute name used for double-patch guard (SDK-02)
+_PATCHED_ATTR = "_agentmetrics_patched"
+
 logger = logging.getLogger("agentmetrics")
+
+# SEC-J02: Module-level scrub function hook
+_scrub_fn: Callable[[dict], dict] | None = None
+
+
+def _apply_scrub(payload: dict) -> dict:
+    """SEC-J02: Apply user-supplied scrub_fn to payload before sending."""
+    if _scrub_fn is not None:
+        try:
+            return _scrub_fn(dict(payload))
+        except Exception as exc:
+            logger.warning("agentmetrics: scrub_fn raised %s; sending unscrubbed", exc)
+    return payload
+
+
+# SDK-01: Helpers to wrap sync/async streaming generators
+def _wrap_sync_stream(gen: Any, on_done: Callable[[Any], None]) -> Generator[Any, None, None]:  # type annotation — wraps arbitrary callable
+    """Wrap a sync generator; call on_done(last_chunk) after exhaustion."""
+    last = None
+    try:
+        for chunk in gen:
+            last = chunk
+            yield chunk
+    finally:
+        on_done(last)
+
+
+async def _wrap_async_stream(agen: Any, on_done: Callable[[Any], None]) -> AsyncGenerator[Any, None]:  # type annotation — wraps arbitrary callable
+    """Wrap an async generator; call on_done(last_chunk) after exhaustion."""
+    last = None
+    try:
+        async for chunk in agen:
+            last = chunk
+            yield chunk
+    finally:
+        on_done(last)
+
+
+def _extract_stream_usage(chunk: Any) -> dict:  # type annotation — wraps arbitrary callable
+    """SDK-01: Extract token usage from the last chunk of a streaming response."""
+    if chunk is None:
+        return {}
+    # Anthropic: chunk.usage.input_tokens
+    usage = getattr(chunk, "usage", None)
+    if usage:
+        input_tokens = getattr(usage, "input_tokens", 0) or 0
+        output_tokens = getattr(usage, "output_tokens", 0) or 0
+        # Check for OpenAI-style prompt_tokens / completion_tokens on the same object
+        if not input_tokens:
+            input_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        if not output_tokens:
+            output_tokens = getattr(usage, "completion_tokens", 0) or 0
+        return {"input_tokens": input_tokens, "output_tokens": output_tokens}
+    return {}
 
 # (input, output, cacheRead, cacheWrite) - cost per million tokens
 _PRICING: dict[str, tuple] = {
@@ -78,7 +144,7 @@ _score_accumulator: ContextVar[dict | None] = ContextVar("agentmetrics_scores", 
 
 
 class _BatchSender:
-    def __init__(self, client: "HttpClient", max_size: int = 20, flush_interval: float = 2.0):
+    def __init__(self, client: HttpClient, max_size: int = 20, flush_interval: float = 2.0) -> None:
         self._client = client
         self._max_size = max_size
         self._flush_interval = flush_interval
@@ -131,7 +197,7 @@ class _BatchSender:
 
 
 class _StepContext:
-    def __init__(self, name: str, step_type: str = "custom", metadata: dict | None = None):
+    def __init__(self, name: str, step_type: str = "custom", metadata: dict | None = None) -> None:
         self.name = name
         self.step_type = step_type
         self.metadata = metadata or {}
@@ -139,11 +205,11 @@ class _StepContext:
         self.status = "success"
         self.error: str | None = None
 
-    def __enter__(self):
+    def __enter__(self) -> _StepContext:
         self._start = time.monotonic()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> bool:
         duration_ms = (time.monotonic() - self._start) * 1000
         if exc_type is not None:
             self.status = "failed"
@@ -163,26 +229,26 @@ class _StepContext:
             steps.append(entry)
         return False
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> _StepContext:
         return self.__enter__()
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> bool:
         return self.__exit__(exc_type, exc_val, exc_tb)
 
 
 class _ToolContext:
-    def __init__(self, name: str, metadata: dict | None = None):
+    def __init__(self, name: str, metadata: dict | None = None) -> None:
         self.name = name
         self.metadata = metadata or {}
         self._start: float = 0.0
         self.status = "success"
         self.error: str | None = None
 
-    def __enter__(self):
+    def __enter__(self) -> _ToolContext:
         self._start = time.monotonic()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> bool:
         duration_ms = (time.monotonic() - self._start) * 1000
         if exc_type is not None:
             self.status = "failed"
@@ -201,10 +267,10 @@ class _ToolContext:
             tools.append(entry)
         return False
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> _ToolContext:
         return self.__enter__()
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> bool:
         return self.__exit__(exc_type, exc_val, exc_tb)
 
 
@@ -212,263 +278,395 @@ class _ToolContext:
 # Auto-instrumentation patches - each returns True if the library is installed
 # ---------------------------------------------------------------------------
 
-def _patch_litellm(on_response):
-    try:
-        import litellm
-        _orig_c = litellm.completion
-        _orig_a = litellm.acompletion
-
-        def _pc(*a, **kw):
-            resp = _orig_c(*a, **kw)
-            try:
-                u = getattr(resp, "usage", None)
-                m = getattr(resp, "model", kw.get("model"))
-                if u:
-                    on_response(m, getattr(u, "prompt_tokens", 0), getattr(u, "completion_tokens", 0))
-            except Exception:
-                pass
-            return resp
-
-        async def _pa(*a, **kw):
-            resp = await _orig_a(*a, **kw)
-            try:
-                u = getattr(resp, "usage", None)
-                m = getattr(resp, "model", kw.get("model"))
-                if u:
-                    on_response(m, getattr(u, "prompt_tokens", 0), getattr(u, "completion_tokens", 0))
-            except Exception:
-                pass
-            return resp
-
-        litellm.completion = _pc
-        litellm.acompletion = _pa
-        return True
-    except ImportError:
-        return False
-
-
-def _patch_anthropic(on_response):
-    try:
-        from anthropic.resources.messages import AsyncMessages, Messages
-        _orig_sync = Messages.create
-        _orig_async = AsyncMessages.create
-
-        def _capture_anthropic(resp, kw):
-            u = getattr(resp, "usage", None)
-            m = getattr(resp, "model", kw.get("model"))
-            if u:
-                on_response(
-                    m,
-                    getattr(u, "input_tokens", 0),
-                    getattr(u, "output_tokens", 0),
-                    cache_read=getattr(u, "cache_read_input_tokens", 0) or 0,
-                    cache_write=getattr(u, "cache_creation_input_tokens", 0) or 0,
-                )
-
-        def _p(s, *a, **kw):
-            if kw.get("stream"):
-                return _orig_sync(s, *a, **kw)
-            resp = _orig_sync(s, *a, **kw)
-            try:
-                _capture_anthropic(resp, kw)
-            except Exception:
-                pass
-            return resp
-
-        async def _pa(s, *a, **kw):
-            if kw.get("stream"):
-                return await _orig_async(s, *a, **kw)
-            resp = await _orig_async(s, *a, **kw)
-            try:
-                _capture_anthropic(resp, kw)
-            except Exception:
-                pass
-            return resp
-
-        Messages.create = _p
-        AsyncMessages.create = _pa
-        return True
-    except (ImportError, AttributeError):
-        return False
-
-
-def _patch_openai(on_response):
-    # Covers OpenAI, Azure OpenAI, Groq, Together AI (all use openai SDK).
-    try:
-        from openai.resources.chat.completions import AsyncCompletions, Completions
-        _orig_sync = Completions.create
-        _orig_async = AsyncCompletions.create
-
-        def _capture_openai(resp, kw):
-            u = getattr(resp, "usage", None)
-            m = getattr(resp, "model", kw.get("model"))
-            if u:
-                on_response(m, getattr(u, "prompt_tokens", 0), getattr(u, "completion_tokens", 0))
-
-        def _p(s, *a, **kw):
-            if kw.get("stream"):
-                return _orig_sync(s, *a, **kw)
-            resp = _orig_sync(s, *a, **kw)
-            try:
-                _capture_openai(resp, kw)
-            except Exception:
-                pass
-            return resp
-
-        async def _pa(s, *a, **kw):
-            if kw.get("stream"):
-                return await _orig_async(s, *a, **kw)
-            resp = await _orig_async(s, *a, **kw)
-            try:
-                _capture_openai(resp, kw)
-            except Exception:
-                pass
-            return resp
-
-        Completions.create = _p
-        AsyncCompletions.create = _pa
-        return True
-    except (ImportError, AttributeError):
-        return False
-
-
-def _patch_google(on_response):
-    try:
-        import google.generativeai as genai
-        _orig = genai.GenerativeModel.generate_content
-
-        def _p(s, *a, **kw):
-            resp = _orig(s, *a, **kw)
-            try:
-                u = getattr(resp, "usage_metadata", None)
-                m = getattr(s, "model_name", None)
-                if u:
-                    on_response(m, getattr(u, "prompt_token_count", 0), getattr(u, "candidates_token_count", 0))
-            except Exception:
-                pass
-            return resp
-
-        genai.GenerativeModel.generate_content = _p
-        return True
-    except (ImportError, AttributeError):
-        return False
-
-
-def _patch_cohere(on_response):
-    try:
-        import cohere
-        _orig = cohere.Client.chat
-
-        def _p(s, *a, **kw):
-            resp = _orig(s, *a, **kw)
-            try:
-                meta = getattr(resp, "meta", None)
-                tokens = getattr(meta, "tokens", None) if meta else None
-                m = kw.get("model", "command-r")
-                if tokens:
-                    on_response(m, getattr(tokens, "input_tokens", 0), getattr(tokens, "output_tokens", 0))
-            except Exception:
-                pass
-            return resp
-
-        cohere.Client.chat = _p
-        return True
-    except (ImportError, AttributeError):
-        return False
-
-
-def _patch_mistral(on_response):
-    try:
-        from mistralai.client import MistralClient
-        _orig = MistralClient.chat
-
-        def _p(s, *a, **kw):
-            resp = _orig(s, *a, **kw)
-            try:
-                u = getattr(resp, "usage", None)
-                m = kw.get("model", "mistral-small-latest")
-                if u:
-                    on_response(m, getattr(u, "prompt_tokens", 0), getattr(u, "completion_tokens", 0))
-            except Exception:
-                pass
-            return resp
-
-        MistralClient.chat = _p
-        return True
-    except (ImportError, AttributeError):
-        return False
-
-
-def _patch_langchain(on_response):
-    # LangChain BaseCallbackHandler covers LangGraph + CrewAI + any chain.
-    try:
-        from langchain_core.callbacks.base import BaseCallbackHandler
-
-        class _CB(BaseCallbackHandler):
-            def on_llm_end(self, response, **kwargs):
-                try:
-                    for gl in response.generations:
-                        for g in gl:
-                            info = getattr(g, "generation_info", {}) or {}
-                            u = info.get("usage") or {}
-                            m = info.get("model_name") or info.get("model")
-                            if u:
-                                on_response(m, u.get("prompt_tokens", 0), u.get("completion_tokens", 0))
-                except Exception:
-                    pass
-
-        from langchain_core.callbacks.manager import get_callback_manager
+def _patch_litellm(on_response: Callable[..., None]) -> bool:  # type annotation — wraps arbitrary callable
+    # SEC-J01: Acquire patch lock to prevent race conditions
+    with _PATCH_LOCK:
         try:
-            get_callback_manager().add_handler(_CB())
-        except Exception:
-            pass
-        return True
-    except (ImportError, AttributeError):
-        return False
+            import litellm
+            # SDK-02: Double-patch guard for sync
+            _orig_c = getattr(litellm, "completion", None)
+            if _orig_c is None or getattr(_orig_c, _PATCHED_ATTR, False):
+                _orig_a = getattr(litellm, "acompletion", None)
+                if _orig_a is None or getattr(_orig_a, _PATCHED_ATTR, False):
+                    return True  # already patched
+            _orig_c = litellm.completion
+            _orig_a = litellm.acompletion
 
-
-def _patch_llamaindex(on_response):
-    try:
-        from llama_index.core.callbacks.base import CallbackManager
-        from llama_index.core.callbacks.base_handler import BaseCallbackHandler as LIH
-        from llama_index.core.callbacks.schema import CBEventType, EventPayload
-
-        class _CB(LIH):
-            event_starts_to_ignore: ClassVar[list] = []
-            event_ends_to_ignore: ClassVar[list] = []
-
-            def on_event_end(self, event_type, payload=None, event_id="", **kwargs):
-                if event_type != CBEventType.LLM:
-                    return
+            def _pc(*a: Any, **kw: Any) -> Any:  # type annotation — wraps arbitrary callable
+                # SDK-01: Streaming support
+                if kw.get("stream"):
+                    resp = _orig_c(*a, **kw)
+                    m = kw.get("model")
+                    def on_done(last_chunk: Any) -> None:
+                        usage = _extract_stream_usage(last_chunk)
+                        if usage:
+                            on_response(m, usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+                    return _wrap_sync_stream(resp, on_done)
+                resp = _orig_c(*a, **kw)
                 try:
-                    resp = (payload or {}).get(EventPayload.RESPONSE)
-                    raw = getattr(resp, "raw", None)
-                    u = (raw.get("usage") if raw and hasattr(raw, "get") else None) or {}
-                    m = getattr(resp, "additional_kwargs", {}).get("model")
+                    u = getattr(resp, "usage", None)
+                    m = getattr(resp, "model", kw.get("model"))
                     if u:
-                        on_response(m, u.get("prompt_tokens", 0), u.get("completion_tokens", 0))
-                except Exception:
+                        on_response(m, getattr(u, "prompt_tokens", 0), getattr(u, "completion_tokens", 0))
+                except (TypeError, AttributeError, RuntimeError) as exc:
+                    logger.warning("agentmetrics: patch error in litellm.completion (%s), passing through: %s",
+                                   type(exc).__name__, exc)
+                return resp
+
+            async def _pa(*a: Any, **kw: Any) -> Any:  # type annotation — wraps arbitrary callable
+                # SDK-01: Streaming support
+                if kw.get("stream"):
+                    resp = await _orig_a(*a, **kw)
+                    m = kw.get("model")
+                    def on_done(last_chunk: Any) -> None:
+                        usage = _extract_stream_usage(last_chunk)
+                        if usage:
+                            on_response(m, usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+                    return _wrap_async_stream(resp, on_done)
+                resp = await _orig_a(*a, **kw)
+                try:
+                    u = getattr(resp, "usage", None)
+                    m = getattr(resp, "model", kw.get("model"))
+                    if u:
+                        on_response(m, getattr(u, "prompt_tokens", 0), getattr(u, "completion_tokens", 0))
+                except (TypeError, AttributeError, RuntimeError) as exc:
+                    logger.warning("agentmetrics: patch error in litellm.acompletion (%s), passing through: %s",
+                                   type(exc).__name__, exc)
+                return resp
+
+            _pc._agentmetrics_patched = True  # SDK-02
+            _pc._agentmetrics_original = _orig_c
+            _pa._agentmetrics_patched = True  # SDK-02
+            _pa._agentmetrics_original = _orig_a
+            litellm.completion = _pc
+            litellm.acompletion = _pa
+            return True
+        except (ImportError, AttributeError) as exc:
+            logger.debug("agentmetrics: skipping patch for litellm: %s", exc)
+            return False
+
+
+def _patch_anthropic(on_response: Callable[..., None]) -> bool:  # type annotation — wraps arbitrary callable
+    # SEC-J01: Acquire patch lock to prevent race conditions
+    with _PATCH_LOCK:
+        try:
+            from anthropic.resources.messages import AsyncMessages, Messages
+            # SDK-02: Double-patch guard
+            _orig_sync = getattr(Messages, "create", None)
+            if _orig_sync is None or getattr(_orig_sync, _PATCHED_ATTR, False):
+                return True
+            _orig_async = getattr(AsyncMessages, "create", None)
+            if _orig_async is None or getattr(_orig_async, _PATCHED_ATTR, False):
+                return True
+
+            def _capture_anthropic(resp: Any, kw: Any) -> None:  # type annotation — wraps arbitrary callable
+                u = getattr(resp, "usage", None)
+                m = getattr(resp, "model", kw.get("model"))
+                if u:
+                    on_response(
+                        m,
+                        getattr(u, "input_tokens", 0),
+                        getattr(u, "output_tokens", 0),
+                        cache_read=getattr(u, "cache_read_input_tokens", 0) or 0,
+                        cache_write=getattr(u, "cache_creation_input_tokens", 0) or 0,
+                    )
+
+            def _p(s: Any, *a: Any, **kw: Any) -> Any:  # type annotation — wraps arbitrary callable
+                # SDK-01: Wrap streaming response
+                if kw.get("stream"):
+                    resp = _orig_sync(s, *a, **kw)
+                    m = kw.get("model")
+                    def on_done(last_chunk: Any) -> None:
+                        usage = _extract_stream_usage(last_chunk)
+                        if usage:
+                            on_response(m, usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+                    return _wrap_sync_stream(resp, on_done)
+                resp = _orig_sync(s, *a, **kw)
+                try:
+                    _capture_anthropic(resp, kw)
+                except (TypeError, AttributeError, RuntimeError) as exc:
+                    logger.warning("agentmetrics: patch error in anthropic Messages.create (%s), passing through: %s",
+                                   type(exc).__name__, exc)
+                    return _orig_sync(s, *a, **kw)
+                return resp
+
+            async def _pa(s: Any, *a: Any, **kw: Any) -> Any:  # type annotation — wraps arbitrary callable
+                # SDK-01: Wrap async streaming response
+                if kw.get("stream"):
+                    resp = await _orig_async(s, *a, **kw)
+                    m = kw.get("model")
+                    def on_done(last_chunk: Any) -> None:
+                        usage = _extract_stream_usage(last_chunk)
+                        if usage:
+                            on_response(m, usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+                    return _wrap_async_stream(resp, on_done)
+                resp = await _orig_async(s, *a, **kw)
+                try:
+                    _capture_anthropic(resp, kw)
+                except (TypeError, AttributeError, RuntimeError) as exc:
+                    logger.warning("agentmetrics: patch error in anthropic AsyncMessages.create (%s), passing through: %s",
+                                   type(exc).__name__, exc)
+                    return await _orig_async(s, *a, **kw)
+                return resp
+
+            _p._agentmetrics_patched = True  # SDK-02
+            _p._agentmetrics_original = _orig_sync
+            _pa._agentmetrics_patched = True  # SDK-02
+            _pa._agentmetrics_original = _orig_async
+            Messages.create = _p
+            AsyncMessages.create = _pa
+            return True
+        except (ImportError, AttributeError) as exc:
+            logger.debug("agentmetrics: skipping patch for anthropic: %s", exc)
+            return False
+
+
+def _patch_openai(on_response: Callable[..., None]) -> bool:  # type annotation — wraps arbitrary callable
+    # Covers OpenAI, Azure OpenAI, Groq, Together AI (all use openai SDK).
+    # SEC-J01: Acquire patch lock to prevent race conditions
+    with _PATCH_LOCK:
+        try:
+            from openai.resources.chat.completions import AsyncCompletions, Completions
+            # SDK-02: Double-patch guard
+            _orig_sync = getattr(Completions, "create", None)
+            if _orig_sync is None or getattr(_orig_sync, _PATCHED_ATTR, False):
+                return True
+            _orig_async = getattr(AsyncCompletions, "create", None)
+            if _orig_async is None or getattr(_orig_async, _PATCHED_ATTR, False):
+                return True
+
+            def _capture_openai(resp: Any, kw: Any) -> None:  # type annotation — wraps arbitrary callable
+                u = getattr(resp, "usage", None)
+                m = getattr(resp, "model", kw.get("model"))
+                if u:
+                    on_response(m, getattr(u, "prompt_tokens", 0), getattr(u, "completion_tokens", 0))
+
+            def _p(s: Any, *a: Any, **kw: Any) -> Any:  # type annotation — wraps arbitrary callable
+                # SDK-01: Wrap streaming response
+                if kw.get("stream"):
+                    resp = _orig_sync(s, *a, **kw)
+                    m = kw.get("model")
+                    def on_done(last_chunk: Any) -> None:
+                        usage = _extract_stream_usage(last_chunk)
+                        if usage:
+                            on_response(m, usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+                    return _wrap_sync_stream(resp, on_done)
+                resp = _orig_sync(s, *a, **kw)
+                try:
+                    _capture_openai(resp, kw)
+                except (TypeError, AttributeError, RuntimeError) as exc:
+                    logger.warning("agentmetrics: patch error in openai Completions.create (%s), passing through: %s",
+                                   type(exc).__name__, exc)
+                    return _orig_sync(s, *a, **kw)
+                return resp
+
+            async def _pa(s: Any, *a: Any, **kw: Any) -> Any:  # type annotation — wraps arbitrary callable
+                # SDK-01: Wrap async streaming response
+                if kw.get("stream"):
+                    resp = await _orig_async(s, *a, **kw)
+                    m = kw.get("model")
+                    def on_done(last_chunk: Any) -> None:
+                        usage = _extract_stream_usage(last_chunk)
+                        if usage:
+                            on_response(m, usage.get("input_tokens", 0), usage.get("output_tokens", 0))
+                    return _wrap_async_stream(resp, on_done)
+                resp = await _orig_async(s, *a, **kw)
+                try:
+                    _capture_openai(resp, kw)
+                except (TypeError, AttributeError, RuntimeError) as exc:
+                    logger.warning("agentmetrics: patch error in openai AsyncCompletions.create (%s), passing through: %s",
+                                   type(exc).__name__, exc)
+                    return await _orig_async(s, *a, **kw)
+                return resp
+
+            _p._agentmetrics_patched = True  # SDK-02
+            _p._agentmetrics_original = _orig_sync
+            _pa._agentmetrics_patched = True  # SDK-02
+            _pa._agentmetrics_original = _orig_async
+            Completions.create = _p
+            AsyncCompletions.create = _pa
+            return True
+        except (ImportError, AttributeError) as exc:
+            logger.debug("agentmetrics: skipping patch for openai: %s", exc)
+            return False
+
+
+def _patch_google(on_response: Callable[..., None]) -> bool:  # type annotation — wraps arbitrary callable
+    # SEC-J01: Acquire patch lock to prevent race conditions
+    with _PATCH_LOCK:
+        try:
+            import google.generativeai as genai
+            # SDK-02: Double-patch guard
+            _orig = getattr(genai.GenerativeModel, "generate_content", None)
+            if _orig is None or getattr(_orig, _PATCHED_ATTR, False):
+                return True
+
+            def _p(s: Any, *a: Any, **kw: Any) -> Any:  # type annotation — wraps arbitrary callable
+                resp = _orig(s, *a, **kw)
+                try:
+                    u = getattr(resp, "usage_metadata", None)
+                    m = getattr(s, "model_name", None)
+                    if u:
+                        on_response(m, getattr(u, "prompt_token_count", 0), getattr(u, "candidates_token_count", 0))
+                except (TypeError, AttributeError, RuntimeError) as exc:
+                    logger.warning("agentmetrics: patch error in google generate_content (%s), passing through: %s",
+                                   type(exc).__name__, exc)
+                    return _orig(s, *a, **kw)
+                return resp
+
+            _p._agentmetrics_patched = True  # SDK-02
+            _p._agentmetrics_original = _orig
+            genai.GenerativeModel.generate_content = _p
+            return True
+        except (ImportError, AttributeError) as exc:
+            logger.debug("agentmetrics: skipping patch for google-generativeai: %s", exc)
+            return False
+
+
+def _patch_cohere(on_response: Callable[..., None]) -> bool:  # type annotation — wraps arbitrary callable
+    # SEC-J01: Acquire patch lock to prevent race conditions
+    with _PATCH_LOCK:
+        try:
+            import cohere
+            # SDK-02: Double-patch guard
+            _orig = getattr(cohere.Client, "chat", None)
+            if _orig is None or getattr(_orig, _PATCHED_ATTR, False):
+                return True
+
+            def _p(s: Any, *a: Any, **kw: Any) -> Any:  # type annotation — wraps arbitrary callable
+                resp = _orig(s, *a, **kw)
+                try:
+                    meta = getattr(resp, "meta", None)
+                    tokens = getattr(meta, "tokens", None) if meta else None
+                    m = kw.get("model", "command-r")
+                    if tokens:
+                        on_response(m, getattr(tokens, "input_tokens", 0), getattr(tokens, "output_tokens", 0))
+                except (TypeError, AttributeError, RuntimeError) as exc:
+                    logger.warning("agentmetrics: patch error in cohere Client.chat (%s), passing through: %s",
+                                   type(exc).__name__, exc)
+                    return _orig(s, *a, **kw)
+                return resp
+
+            _p._agentmetrics_patched = True  # SDK-02
+            _p._agentmetrics_original = _orig
+            cohere.Client.chat = _p
+            return True
+        except (ImportError, AttributeError) as exc:
+            logger.debug("agentmetrics: skipping patch for cohere: %s", exc)
+            return False
+
+
+def _patch_mistral(on_response: Callable[..., None]) -> bool:  # type annotation — wraps arbitrary callable
+    # SEC-J01: Acquire patch lock to prevent race conditions
+    with _PATCH_LOCK:
+        try:
+            from mistralai.client import MistralClient
+            # SDK-02: Double-patch guard
+            _orig = getattr(MistralClient, "chat", None)
+            if _orig is None or getattr(_orig, _PATCHED_ATTR, False):
+                return True
+
+            def _p(s: Any, *a: Any, **kw: Any) -> Any:  # type annotation — wraps arbitrary callable
+                resp = _orig(s, *a, **kw)
+                try:
+                    u = getattr(resp, "usage", None)
+                    m = kw.get("model", "mistral-small-latest")
+                    if u:
+                        on_response(m, getattr(u, "prompt_tokens", 0), getattr(u, "completion_tokens", 0))
+                except (TypeError, AttributeError, RuntimeError) as exc:
+                    logger.warning("agentmetrics: patch error in mistral MistralClient.chat (%s), passing through: %s",
+                                   type(exc).__name__, exc)
+                    return _orig(s, *a, **kw)
+                return resp
+
+            _p._agentmetrics_patched = True  # SDK-02
+            _p._agentmetrics_original = _orig
+            MistralClient.chat = _p
+            return True
+        except (ImportError, AttributeError) as exc:
+            logger.debug("agentmetrics: skipping patch for mistralai: %s", exc)
+            return False
+
+
+def _patch_langchain(on_response: Callable[..., None]) -> bool:  # type annotation — wraps arbitrary callable
+    # LangChain BaseCallbackHandler covers LangGraph + CrewAI + any chain.
+    # SEC-J01: Acquire patch lock to prevent race conditions
+    with _PATCH_LOCK:
+        try:
+            from langchain_core.callbacks.base import BaseCallbackHandler
+
+            class _CB(BaseCallbackHandler):
+                def on_llm_end(self, response: Any, **kwargs: Any) -> None:  # type annotation — wraps arbitrary callable
+                    try:
+                        for gl in response.generations:
+                            for g in gl:
+                                info = getattr(g, "generation_info", {}) or {}
+                                u = info.get("usage") or {}
+                                m = info.get("model_name") or info.get("model")
+                                if u:
+                                    on_response(m, u.get("prompt_tokens", 0), u.get("completion_tokens", 0))
+                    except (TypeError, AttributeError, RuntimeError) as exc:
+                        logger.warning("agentmetrics: patch error in langchain on_llm_end (%s), passing through: %s",
+                                       type(exc).__name__, exc)
+
+            from langchain_core.callbacks.manager import get_callback_manager
+            try:
+                get_callback_manager().add_handler(_CB())
+            except (TypeError, AttributeError, RuntimeError) as exc:
+                logger.debug("agentmetrics: could not add langchain callback handler: %s", exc)
+            return True
+        except (ImportError, AttributeError) as exc:
+            logger.debug("agentmetrics: skipping patch for langchain: %s", exc)
+            return False
+
+
+def _patch_llamaindex(on_response: Callable[..., None]) -> bool:  # type annotation — wraps arbitrary callable
+    # SEC-J01: Acquire patch lock to prevent race conditions
+    with _PATCH_LOCK:
+        try:
+            from llama_index.core.callbacks.base import CallbackManager
+            from llama_index.core.callbacks.base_handler import BaseCallbackHandler as LIH
+            from llama_index.core.callbacks.schema import CBEventType, EventPayload
+
+            class _CB(LIH):
+                # SDK-03: Typed ClassVar to prevent accidental mutation of the class-level default
+                event_starts_to_ignore: ClassVar[list[str]] = []
+                event_ends_to_ignore: ClassVar[list[str]] = []
+
+                def on_event_end(self, event_type: Any, payload: Any = None, event_id: str = "", **kwargs: Any) -> None:  # type annotation — wraps arbitrary callable
+                    if event_type != CBEventType.LLM:
+                        return
+                    try:
+                        resp = (payload or {}).get(EventPayload.RESPONSE)
+                        raw = getattr(resp, "raw", None)
+                        u = (raw.get("usage") if raw and hasattr(raw, "get") else None) or {}
+                        m = getattr(resp, "additional_kwargs", {}).get("model")
+                        if u:
+                            on_response(m, u.get("prompt_tokens", 0), u.get("completion_tokens", 0))
+                    except (TypeError, AttributeError, RuntimeError) as exc:
+                        logger.warning("agentmetrics: patch error in llamaindex on_event_end (%s), passing through: %s",
+                                       type(exc).__name__, exc)
+
+                def start_trace(self, trace_id: str | None = None) -> None:
                     pass
 
-            def start_trace(self, trace_id=None):
-                pass
+                def end_trace(self, trace_id: str | None = None, trace_map: Any = None) -> None:
+                    pass
 
-            def end_trace(self, trace_id=None, trace_map=None):
-                pass
+                def on_event_start(self, event_type: Any, payload: Any = None, event_id: str = "", parent_id: str = "", **kwargs: Any) -> None:  # type annotation — wraps arbitrary callable
+                    pass
 
-            def on_event_start(self, event_type, payload=None, event_id="", parent_id="", **kwargs):
-                pass
-
-        from llama_index.core import Settings
-        if Settings.callback_manager is None:
-            Settings.callback_manager = CallbackManager()
-        Settings.callback_manager.add_handler(_CB())
-        return True
-    except (ImportError, AttributeError):
-        return False
+            from llama_index.core import Settings
+            if Settings.callback_manager is None:
+                Settings.callback_manager = CallbackManager()
+            Settings.callback_manager.add_handler(_CB())
+            return True
+        except (ImportError, AttributeError) as exc:
+            logger.debug("agentmetrics: skipping patch for llama-index: %s", exc)
+            return False
 
 
-def _count_loops(tool_calls: list, threshold: int = 3) -> int:
+def _count_loops(tool_calls: list, threshold: int = _TOOL_LOOP_THRESHOLD) -> int:
     """Count how many loop sequences (threshold identical consecutive tool names) occur."""
     if len(tool_calls) < threshold:
         return 0
@@ -489,7 +687,7 @@ def _count_loops(tool_calls: list, threshold: int = 3) -> int:
 # ---------------------------------------------------------------------------
 
 class Tracker:
-    def __init__(self):
+    def __init__(self) -> None:
         self._api_key: str | None = None
         self._client: HttpClient | None = None
         self._batch: _BatchSender | None = None
@@ -506,7 +704,9 @@ class Tracker:
         batch_size: int = 20,
         flush_interval: float = 2.0,
         compress: bool = False,
+        scrub_fn: Callable[[dict], dict] | None = None,
     ) -> None:
+        global _scrub_fn
         if self._client is not None:
             logger.warning("agentmetrics: configure() called more than once; overwriting previous configuration")
         self._api_key = api_key or None
@@ -514,6 +714,8 @@ class Tracker:
         self._sample_rate = max(0.0, min(1.0, sample_rate))
         self._client = HttpClient(api_key=api_key, base_url=base_url, compress=compress)
         self._batch = _BatchSender(self._client, max_size=batch_size, flush_interval=flush_interval)
+        # SEC-J02: Register the scrub function hook
+        _scrub_fn = scrub_fn
 
     @property
     def is_configured(self) -> bool:
@@ -554,11 +756,11 @@ class Tracker:
             if cache_write:
                 tokens["cache_write_tokens"] = tokens.get("cache_write_tokens", 0) + cache_write
 
-    def track(self, agent_id: str, metadata: dict | None = None):
-        def decorator(func):
+    def track(self, agent_id: str, metadata: dict | None = None) -> Callable[[Any], Any]:  # type annotation — wraps arbitrary callable
+        def decorator(func: Any) -> Any:  # type annotation — wraps arbitrary callable
             if asyncio.iscoroutinefunction(func):
                 @functools.wraps(func)
-                async def async_wrapper(*args, **kwargs):
+                async def async_wrapper(*args: Any, **kwargs: Any) -> Any:  # type annotation — wraps arbitrary callable
                     if not self.is_configured:
                         logger.warning("agentmetrics: configure() was not called before tracking agent '%s'", agent_id)
                         return await func(*args, **kwargs)
@@ -566,7 +768,7 @@ class Tracker:
                 return async_wrapper
             else:
                 @functools.wraps(func)
-                def sync_wrapper(*args, **kwargs):
+                def sync_wrapper(*args: Any, **kwargs: Any) -> Any:  # type annotation — wraps arbitrary callable
                     if not self.is_configured:
                         logger.warning("agentmetrics: configure() was not called before tracking agent '%s'", agent_id)
                         return func(*args, **kwargs)
@@ -587,8 +789,14 @@ class Tracker:
             return
         scores[name] = value
 
-    def _run_sync(self, func, agent_id: str, args, kwargs, extra_metadata):
+    def _run_sync(self, func: Any, agent_id: str, args: Any, kwargs: Any, extra_metadata: dict | None) -> Any:  # type annotation — wraps arbitrary callable
         if self._sample_rate < 1.0 and random.random() > self._sample_rate:
+            # SDK-06: Log when a run is sampled out so operators know it happened
+            _tid = _current_trace_id.get() or "(not yet set)"
+            logger.debug(
+                "agentmetrics: run sampled out (sample_rate=%.2f, trace_id=%s)",
+                self._sample_rate, _tid,
+            )
             return func(*args, **kwargs)
         parent_trace_id = _current_trace_id.get()
         trace_id = str(uuid.uuid4())
@@ -619,8 +827,14 @@ class Tracker:
             _score_accumulator.reset(t6)
             self._send(trace_id, agent_id, status, duration_ms, error_msg, steps, tools, tok_acc, extra_metadata, parent_trace_id=parent_trace_id, scores=scores)
 
-    async def _run_async(self, func, agent_id: str, args, kwargs, extra_metadata):
+    async def _run_async(self, func: Any, agent_id: str, args: Any, kwargs: Any, extra_metadata: dict | None) -> Any:  # type annotation — wraps arbitrary callable
         if self._sample_rate < 1.0 and random.random() > self._sample_rate:
+            # SDK-06: Log when a run is sampled out so operators know it happened
+            _tid = _current_trace_id.get() or "(not yet set)"
+            logger.debug(
+                "agentmetrics: run sampled out (sample_rate=%.2f, trace_id=%s)",
+                self._sample_rate, _tid,
+            )
             return await func(*args, **kwargs)
         parent_trace_id = _current_trace_id.get()
         trace_id = str(uuid.uuid4())
@@ -727,7 +941,11 @@ class Tracker:
             metadata.update(extra_metadata)
         if metadata:
             payload["metadata"] = metadata
-        self._batch.enqueue(payload)
+        # XC-03: Include SDK version in every emitted payload
+        from agentmetrics import __version__ as _SDK_VERSION
+        payload["sdk_version"] = _SDK_VERSION
+        # SEC-J02: Apply scrub function before sending
+        self._batch.enqueue(_apply_scrub(payload))
 
     @property
     def trace_id(self) -> str | None:

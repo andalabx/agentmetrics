@@ -403,7 +403,7 @@ export default function AgentDetailPage({ agentId: agentIdProp }) {
               </p>
             </div>
             <a
-              href="/insights?tab=optimize"
+              href="/cost?tab=optimize"
               className="shrink-0 rounded-xl border border-savings/30 bg-savings/10 px-4 py-2 text-xs font-semibold text-savings transition-opacity hover:opacity-80"
             >
               View recommendations
@@ -740,6 +740,7 @@ export default function AgentDetailPage({ agentId: agentIdProp }) {
                     hasMore={hasMore}
                     loadingMore={loadingMore}
                     onLoadMore={handleLoadMore}
+                    linkState={{ from: agentId, agentName: agentDisplayName(agentId, namesMap) }}
                   />
                 );
               })()}

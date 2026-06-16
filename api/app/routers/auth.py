@@ -1,10 +1,15 @@
+from __future__ import annotations
+
+import hashlib
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.deps import get_default_org
+from app.deps import get_current_org_from_api_key
 from app.models.organization import Organization
-from app.schemas.auth import OrgResponse, UpdateOrgRequest
+from app.schemas.auth import OrgResponse, RotateKeyResponse, UpdateOrgRequest
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -28,7 +33,7 @@ def _validate_slack_webhook(url: str) -> str:
 
 
 @router.get("/me", response_model=OrgResponse)
-def me(org: Organization = Depends(get_default_org)):
+def me(org: Organization = Depends(get_current_org_from_api_key)) -> OrgResponse:
     org_settings = org.settings or {}
     return OrgResponse(
         id=str(org.id),
@@ -42,9 +47,9 @@ def me(org: Organization = Depends(get_default_org)):
 @router.patch("/me", response_model=OrgResponse)
 def update_me(
     body: UpdateOrgRequest,
-    org: Organization = Depends(get_default_org),
+    org: Organization = Depends(get_current_org_from_api_key),
     db: Session = Depends(get_db),
-):
+) -> OrgResponse:
     if body.company_name is not None:
         org.company_name = body.company_name.strip()
     if body.slack_webhook is not None:
@@ -62,3 +67,18 @@ def update_me(
         plan=org.plan,
         slack_webhook=org_settings.get("slack_webhook"),
     )
+
+
+@router.post("/rotate-key", response_model=RotateKeyResponse)
+def rotate_key(
+    org: Organization = Depends(get_current_org_from_api_key),
+    db: Session = Depends(get_db),
+) -> RotateKeyResponse:
+    """
+    Invalidate the current API key and issue a new one.
+    The new raw key is returned exactly once — store it immediately.
+    """
+    raw_key = "am_" + secrets.token_urlsafe(32)
+    org.sdk_key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
+    db.commit()
+    return RotateKeyResponse(api_key=raw_key)

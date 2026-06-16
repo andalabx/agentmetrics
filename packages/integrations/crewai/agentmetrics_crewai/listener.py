@@ -47,8 +47,8 @@ class _KickoffState:
         self.start_ms   = time.monotonic()
         self.input_tokens     = 0
         self.output_tokens    = 0
-        self.cache_read_tokens  = 0
-        self.cache_write_tokens = 0
+        self.cache_read_tokens: int | None  = None   # CrewAI does not expose cache token breakdown
+        self.cache_write_tokens: int | None = None
         self.llm_calls    = 0
         self.tool_calls   = 0
         self.tool_errors  = 0
@@ -81,41 +81,59 @@ class AgentMetricsListener(BaseEventListener):
     ) -> None:
         self._client     = HttpClient(api_key=api_key, base_url=base_url)
         self._agent_id   = agent_id
-        # source_fingerprint → KickoffState (tracks concurrent kickoffs)
+        # run_key (UUID str) → KickoffState (tracks concurrent kickoffs)
         self._active: dict[str, _KickoffState] = {}
+        # source_fingerprint → run_key; allows other events to find their state
+        self._fingerprint_map: dict[str, str] = {}
         super().__init__()  # calls setup_listeners
 
     def setup_listeners(self, bus: Any) -> None:
 
         @crewai_event_bus.on(CrewKickoffStartedEvent)
         def on_kickoff_started(source: Any, event: CrewKickoffStartedEvent) -> None:
-            key = event.source_fingerprint or str(uuid.uuid4())
+            # INT-02: use a UUID per kickoff as the run key to avoid fingerprint collisions
+            run_key = str(uuid.uuid4())
+            fp = event.source_fingerprint or run_key
             name = event.crew_name or self._agent_id
-            self._active[key] = _KickoffState(name)
+            self._active[run_key] = _KickoffState(name)
+            self._fingerprint_map[fp] = run_key
+
+        def _state_for_event(event: Any) -> _KickoffState | None:
+            fp = event.source_fingerprint or ""
+            run_key = self._fingerprint_map.get(fp)
+            if run_key is None:
+                return None
+            return self._active.get(run_key)
+
+        def _pop_state_for_event(event: Any) -> _KickoffState | None:
+            fp = event.source_fingerprint or ""
+            run_key = self._fingerprint_map.pop(fp, None)
+            if run_key is None:
+                return None
+            return self._active.pop(run_key, None)
 
         @crewai_event_bus.on(LLMCallCompletedEvent)
         def on_llm_completed(source: Any, event: LLMCallCompletedEvent) -> None:
-            state = self._active.get(event.source_fingerprint or "")
+            state = _state_for_event(event)
             if state is None:
                 return
             state.llm_calls += 1
             usage = event.usage or {}
-            state.input_tokens       += usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0
-            state.output_tokens      += usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or 0
-            state.cache_read_tokens  += usage.get("cache_read_tokens", 0) or 0
-            state.cache_write_tokens += usage.get("cache_write_tokens", 0) or 0
+            state.input_tokens  += usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0
+            state.output_tokens += usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or 0
+            # cache_read_tokens / cache_write_tokens remain None — CrewAI does not expose cache breakdown
             if not state.model and event.model:
                 state.model = event.model
 
         @crewai_event_bus.on(LLMCallFailedEvent)
         def on_llm_failed(source: Any, event: LLMCallFailedEvent) -> None:
-            state = self._active.get(event.source_fingerprint or "")
+            state = _state_for_event(event)
             if state:
                 state.status = "failed"
 
         @crewai_event_bus.on(ToolUsageFinishedEvent)
         def on_tool_finished(source: Any, event: ToolUsageFinishedEvent) -> None:
-            state = self._active.get(event.source_fingerprint or "")
+            state = _state_for_event(event)
             if state is None:
                 return
             state.tool_calls += 1
@@ -124,25 +142,25 @@ class AgentMetricsListener(BaseEventListener):
 
         @crewai_event_bus.on(ToolUsageErrorEvent)
         def on_tool_error(source: Any, event: ToolUsageErrorEvent) -> None:
-            state = self._active.get(event.source_fingerprint or "")
+            state = _state_for_event(event)
             if state is None:
                 return
             state.tool_calls  += 1
-            state.tool_errors += 1
+            # INT-03: use getattr with None check instead of hasattr
+            if getattr(event, "error", None) is not None:
+                state.tool_errors += 1
             if event.tool_name:
                 state.tool_names.add(event.tool_name)
 
         @crewai_event_bus.on(CrewKickoffCompletedEvent)
         def on_kickoff_completed(source: Any, event: CrewKickoffCompletedEvent) -> None:
-            key   = event.source_fingerprint or ""
-            state = self._active.pop(key, None)
+            state = _pop_state_for_event(event)
             if state:
                 self._emit(state)
 
         @crewai_event_bus.on(CrewKickoffFailedEvent)
         def on_kickoff_failed(source: Any, event: CrewKickoffFailedEvent) -> None:
-            key   = event.source_fingerprint or ""
-            state = self._active.pop(key, None)
+            state = _pop_state_for_event(event)
             if state:
                 state.status = "failed"
                 state.error  = str(event.error)[:500] if event.error else None
@@ -169,17 +187,15 @@ class AgentMetricsListener(BaseEventListener):
             "tool_errors": state.tool_errors,
             "tool_names":  list(state.tool_names),
             "llm_calls":   state.llm_calls,
-            "input_tokens":  state.input_tokens,
-            "output_tokens": state.output_tokens,
+            "input_tokens":       state.input_tokens,
+            "output_tokens":      state.output_tokens,
+            "cache_read_tokens":  None,   # CrewAI does not expose cache token breakdown
+            "cache_write_tokens": None,
         }
         if state.model:
             payload["model"] = state.model
         if state.error:
             payload["error"] = state.error
-        if state.cache_read_tokens:
-            payload["cache_read_tokens"] = state.cache_read_tokens
-        if state.cache_write_tokens:
-            payload["cache_write_tokens"] = state.cache_write_tokens
         if est is not None:
             payload["estimated_cost_usd"] = est
         self._client.fire_and_forget(payload)

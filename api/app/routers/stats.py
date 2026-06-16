@@ -1,8 +1,11 @@
 """
 Stats endpoint - monthly cost, event counts, historical spend.
 """
+from __future__ import annotations
+
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import text
@@ -21,7 +24,7 @@ router = APIRouter(prefix="/stats", tags=["stats"])
 def get_monthly_stats(
     org: Organization = Depends(get_current_org_from_jwt),
     db: Session = Depends(get_db),
-):
+) -> dict[str, Any]:
     """
     Return current-month and last-month cost + event counts.
     Also returns the last 6 months of spend history.
@@ -123,11 +126,66 @@ def get_monthly_stats(
         logger.exception("[stats] Unexpected error fetching monthly stats for org %s", org_id)
         raise HTTPException(status_code=500, detail="Failed to load stats") from None
 
+@router.get("/daily-cost")
+def get_daily_cost(
+    days: int = 30,
+    org: Organization = Depends(get_current_org_from_jwt),
+    db: Session = Depends(get_db),
+) -> list[dict[str, Any]]:
+    """Return daily cost totals for the last N days."""
+    org_id = str(org.id)
+    days = max(7, min(days, 90))  # clamp 7-90
+
+    if IS_SQLITE:
+        import uuid as _uuid
+        from datetime import timedelta
+
+        from sqlalchemy import Date, cast, func
+
+        from app.models.event import Event
+
+        try:
+            org_uuid = _uuid.UUID(org_id) if isinstance(org_id, str) else org_id
+            cutoff = datetime.now(UTC) - timedelta(days=days)
+            rows = (
+                db.query(
+                    cast(Event.timestamp, Date).label("day"),
+                    func.coalesce(func.sum(Event.cost_usd), 0).label("cost"),
+                    func.count(Event.id).label("runs"),
+                )
+                .filter(Event.org_id == org_uuid, Event.timestamp >= cutoff)
+                .group_by(cast(Event.timestamp, Date))
+                .order_by(cast(Event.timestamp, Date))
+                .all()
+            )
+            return [{"date": str(r.day), "cost_usd": float(r.cost), "runs": int(r.runs)} for r in rows]
+        except Exception as exc:
+            logger.warning("[stats] SQLite daily-cost failed: %s", exc)
+            return []
+
+    try:
+        rows = db.execute(text("""
+            SELECT
+                DATE(timestamp AT TIME ZONE 'UTC') AS day,
+                COALESCE(SUM(cost_usd), 0)         AS cost_usd,
+                COUNT(*)                            AS runs
+            FROM events
+            WHERE org_id = :org_id
+              AND timestamp >= NOW() - (:days || ' days')::interval
+            GROUP BY day
+            ORDER BY day ASC
+        """), {"org_id": org_id, "days": days}).fetchall()
+        return [{"date": str(r[0]), "cost_usd": float(r[1]), "runs": int(r[2])} for r in rows]
+    except Exception:
+        db.rollback()
+        return []
+
+
 @router.get("/week-comparison")
 def get_week_comparison(
     org: Organization = Depends(get_current_org_from_jwt),
     db: Session = Depends(get_db),
-):
+) -> dict[str, Any]:
     """Current 7 days vs previous 7 days: error rate, cost, run count, avg duration."""
     org_id = str(org.id)
 
@@ -155,7 +213,7 @@ def get_week_comparison(
                 func.avg(case((Event.status == "failed", 1.0), else_=0.0)).label("error_rate"),
             ).filter(Event.org_id == org_uuid, Event.timestamp >= cutoff_14d, Event.timestamp < cutoff_7d).one()
 
-            def pct(c, p):
+            def pct(c: int | float | None, p: int | float | None) -> float | None:
                 if not p:
                     return None
                 return round(((float(c or 0) - float(p or 0)) / float(p)) * 100, 1)
@@ -194,7 +252,7 @@ def get_week_comparison(
               AND (run_metadata IS NULL OR run_metadata->>'event_name' IS NULL OR run_metadata->>'event_name' != 'session_metrics')
         """), {"org_id": org_id}).fetchone()
 
-        def pct_change(cur, prev):
+        def pct_change(cur: int | float | None, prev: int | float | None) -> float | None:
             if prev is None or prev == 0:
                 return None
             return round(((cur - prev) / prev) * 100, 1)

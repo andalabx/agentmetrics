@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { getAgents, deleteAgent, getAgentNames, renameAgent } from "../api/agents";
 import Seo from "../components/Seo";
 import AppLayout from "../components/layout/AppLayout";
 import usePolling from "../hooks/usePolling";
+import AgentDetailPanel from "../components/AgentDetailPanel";
 
 function displayName(agentId, namesMap) {
   if (namesMap[agentId]) return namesMap[agentId];
@@ -263,7 +264,10 @@ function sortAgents(agents, sortKey) {
 }
 
 export default function AgentsPage() {
-  const navigate = useNavigate();
+  const navigate   = useNavigate();
+  const params     = useParams();
+  const selectedId = params.agentId ? decodeURIComponent(params.agentId) : null;
+
   const [agents, setAgents] = useState([]);
   const [namesMap, setNamesMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -341,109 +345,152 @@ export default function AgentsPage() {
         robots="noindex,nofollow"
       />
 
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
+      {/* Master-detail wrapper: side-by-side on xl, stacked on smaller screens */}
+      <div className={`flex h-[calc(100vh-56px)] ${selectedId ? "xl:overflow-hidden" : ""}`}>
 
-        {/* Header */}
-        <section className="rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card sm:p-7">
-          <h1 className="text-3xl font-bold tracking-tight text-t1 sm:text-4xl">All agents</h1>
-          <p className="mt-2 text-sm leading-7 text-t2">
-            Every tracked agent. Click any agent to open its full observability view.
-          </p>
-        </section>
+        {/* LEFT: agent list — hides on mobile when panel is open */}
+        <div className={`flex flex-col overflow-y-auto ${
+          selectedId
+            ? "hidden xl:flex xl:w-[420px] xl:shrink-0 xl:border-r xl:border-[var(--border)]"
+            : "flex-1"
+        }`}>
+          <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8">
 
-        {error && (
-          <div className="rounded-2xl border border-danger/30 bg-danger/10 px-5 py-4 text-sm text-danger">{error}</div>
-        )}
-
-        {/* Status filter chips */}
-        {agents.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: "all",      label: "All",      count: agents.length,                             cls: "" },
-              { id: "healthy",  label: "Healthy",  count: agents.filter((a) => healthOf(a) === "healthy").length,  cls: "text-savings border-savings/30 bg-savings/[0.06]" },
-              { id: "degraded", label: "Degraded", count: agents.filter((a) => healthOf(a) === "degraded").length, cls: "text-cost border-cost/30 bg-cost/[0.06]" },
-              { id: "critical", label: "Critical", count: agents.filter((a) => healthOf(a) === "critical").length, cls: "text-danger border-danger/30 bg-danger/[0.06]" },
-              { id: "idle",     label: "Idle",     count: idleAgents.length,                         cls: "text-t2 border-[var(--border)]" },
-            ].map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setStatusFilter(f.id)}
-                className={`rounded-xl border px-4 py-2 text-xs font-semibold transition-all duration-150 ${
-                  statusFilter === f.id
-                    ? f.cls || "border-accent/30 bg-[var(--accent-bg)] text-accent"
-                    : "border-[var(--border)] bg-surface text-t2 hover:text-t1"
-                }`}
-              >
-                {f.label}
-                {f.count > 0 && <span className="ml-1.5 opacity-60">({f.count})</span>}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Search + Sort */}
-        {agents.length > 0 && (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="relative flex-1">
-              <svg className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-t2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                placeholder="Search agents..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full rounded-2xl border border-[var(--border)] bg-surface py-3 pl-11 pr-4 text-sm text-t1 placeholder:text-t2 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
-              />
-            </div>
-            <select
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value)}
-              className="rounded-2xl border border-[var(--border)] bg-surface py-3 pl-4 pr-8 text-sm text-t1 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/50 sm:w-52"
-            >
-              {SORT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="flex flex-col gap-3">
-            {[...Array(4)].map((_, i) => <AgentRowSkeleton key={i} />)}
-          </div>
-        ) : filtered.length === 0 ? (
-          agents.length === 0 ? (
-            <div className="rounded-[28px] border border-[var(--border)] bg-surface p-10 text-center shadow-card">
-              <p className="text-t2">No agents tracked yet.</p>
-              <a
-                href="/connect"
-                className="mt-3 inline-block rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-txt transition-opacity hover:opacity-90"
-              >
-                Instrument your first agent
-              </a>
-            </div>
-          ) : (
-            <div className="rounded-[28px] border border-[var(--border)] bg-surface p-10 text-center shadow-card">
-              <p className="text-t2">
-                {search.trim() ? `No agents matching "${search}"` : `No ${statusFilter} agents`}
+            {/* Header */}
+            <section className="rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card sm:p-7">
+              <h1 className="text-3xl font-bold tracking-tight text-t1 sm:text-4xl">All agents</h1>
+              <p className="mt-2 text-sm leading-7 text-t2">
+                Every tracked agent. Click any agent to open its detail view.
               </p>
-            </div>
-          )
-        ) : (
-          <div className="flex flex-col gap-3">
-            {filtered.map((agent, i) => (
-              <div key={agent.agent_id} className="fade-in-up" style={{ animationDelay: `${i * 40}ms` }}>
-                <AgentRow
-                  agent={agent}
-                  namesMap={namesMap}
-                  onClick={() => navigate(`/agents/${encodeURIComponent(agent.agent_id)}`)}
-                  onDelete={handleDelete}
-                  onRename={handleRename}
-                />
+            </section>
+
+            {error && (
+              <div className="rounded-2xl border border-danger/30 bg-danger/10 px-5 py-4 text-sm text-danger">{error}</div>
+            )}
+
+            {/* Status filter chips */}
+            {agents.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: "all",      label: "All",      count: agents.length,                             cls: "" },
+                  { id: "healthy",  label: "Healthy",  count: agents.filter((a) => healthOf(a) === "healthy").length,  cls: "text-savings border-savings/30 bg-savings/[0.06]" },
+                  { id: "degraded", label: "Degraded", count: agents.filter((a) => healthOf(a) === "degraded").length, cls: "text-cost border-cost/30 bg-cost/[0.06]" },
+                  { id: "critical", label: "Critical", count: agents.filter((a) => healthOf(a) === "critical").length, cls: "text-danger border-danger/30 bg-danger/[0.06]" },
+                  { id: "idle",     label: "Idle",     count: idleAgents.length,                         cls: "text-t2 border-[var(--border)]" },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    onClick={() => setStatusFilter(f.id)}
+                    className={`rounded-xl border px-4 py-2 text-xs font-semibold transition-all duration-150 ${
+                      statusFilter === f.id
+                        ? f.cls || "border-accent/30 bg-[var(--accent-bg)] text-accent"
+                        : "border-[var(--border)] bg-surface text-t2 hover:text-t1"
+                    }`}
+                  >
+                    {f.label}
+                    {f.count > 0 && <span className="ml-1.5 opacity-60">({f.count})</span>}
+                  </button>
+                ))}
               </div>
-            ))}
+            )}
+
+            {/* Search + Sort */}
+            {agents.length > 0 && (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative flex-1">
+                  <svg className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-t2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                  <input
+                    type="text"
+                    placeholder="Search agents..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full rounded-2xl border border-[var(--border)] bg-surface py-3 pl-11 pr-4 text-sm text-t1 placeholder:text-t2 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
+                  />
+                </div>
+                <select
+                  value={sortKey}
+                  onChange={(e) => setSortKey(e.target.value)}
+                  className="rounded-2xl border border-[var(--border)] bg-surface py-3 pl-4 pr-8 text-sm text-t1 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/50 sm:w-52"
+                >
+                  {SORT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {loading ? (
+              <div className="flex flex-col gap-3">
+                {[...Array(4)].map((_, i) => <AgentRowSkeleton key={i} />)}
+              </div>
+            ) : filtered.length === 0 ? (
+              agents.length === 0 ? (
+                <div className="rounded-[28px] border border-[var(--border)] bg-surface p-10 text-center shadow-card">
+                  <p className="text-t2">No agents tracked yet.</p>
+                  <a
+                    href="/connect"
+                    className="mt-3 inline-block rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-accent-txt transition-opacity hover:opacity-90"
+                  >
+                    Instrument your first agent
+                  </a>
+                </div>
+              ) : (
+                <div className="rounded-[28px] border border-[var(--border)] bg-surface p-10 text-center shadow-card">
+                  <p className="text-t2">
+                    {search.trim() ? `No agents matching "${search}"` : `No ${statusFilter} agents`}
+                  </p>
+                </div>
+              )
+            ) : (
+              <div className="flex flex-col gap-3">
+                {filtered.map((agent, i) => (
+                  <div
+                    key={agent.agent_id}
+                    className="fade-in-up"
+                    style={{ animationDelay: `${i * 40}ms` }}
+                  >
+                    <AgentRow
+                      agent={agent}
+                      namesMap={namesMap}
+                      onClick={() => navigate(`/agents/${encodeURIComponent(agent.agent_id)}`)}
+                      onDelete={handleDelete}
+                      onRename={handleRename}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+        </div>
+
+        {/* RIGHT: detail panel — slides in when an agent is selected */}
+        {selectedId && (
+          <>
+            {/* Mobile: full-screen overlay with back button */}
+            <div className="flex flex-1 flex-col xl:hidden">
+              <div className="flex items-center gap-3 border-b border-[var(--border)] bg-surface px-4 py-3">
+                <button
+                  onClick={() => navigate("/agents")}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-1.5 text-xs font-medium text-t2 transition-colors hover:text-t1"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 19l-7-7 7-7" />
+                  </svg>
+                  All agents
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <AgentDetailPanel agentId={selectedId} onClose={() => navigate("/agents")} />
+              </div>
+            </div>
+
+            {/* Desktop: right panel beside the list */}
+            <div className="hidden xl:flex xl:flex-1 xl:overflow-hidden">
+              <AgentDetailPanel agentId={selectedId} onClose={() => navigate("/agents")} />
+            </div>
+          </>
         )}
       </div>
     </AppLayout>

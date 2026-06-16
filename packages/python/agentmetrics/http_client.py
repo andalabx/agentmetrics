@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import gzip
 import json
 import logging
@@ -21,7 +23,11 @@ def _sanitize_error(msg: str) -> str:
 
 
 class HttpClient:
-    def __init__(self, api_key: str, base_url: str, compress: bool = False):
+    # SDK-14: Circuit breaker constants
+    _CB_THRESHOLD = 10
+    _CB_RESET_SECONDS = 300
+
+    def __init__(self, api_key: str, base_url: str, compress: bool = False) -> None:
         self.api_key = api_key
         # Normalise: strip trailing slash and any /v1 suffix - versioned paths
         # are constructed explicitly below so callers can pass either form.
@@ -29,9 +35,30 @@ class HttpClient:
         self._compress = compress
         self._pending_threads: list[threading.Thread] = []
         self._lock = threading.Lock()
+        # SDK-14: Circuit breaker state
+        self._consecutive_failures = 0
+        self._circuit_open_until: float = 0.0
+
+    # SDK-14: Circuit breaker helpers
+    def _record_failure(self) -> None:
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self._CB_THRESHOLD:
+            self._circuit_open_until = time.monotonic() + self._CB_RESET_SECONDS
+            logger.warning(
+                "agentmetrics: %d consecutive send failures — pausing delivery for %ds",
+                self._CB_THRESHOLD, self._CB_RESET_SECONDS,
+            )
+
+    def _record_success(self) -> None:
+        self._consecutive_failures = 0
+        self._circuit_open_until = 0.0
 
     def fire_and_forget(self, payload: dict) -> None:
         """Post event in a background thread. Never blocks. Never raises."""
+        # SDK-14: Check circuit breaker
+        if time.monotonic() < self._circuit_open_until:
+            logger.debug("agentmetrics: circuit open, dropping event")
+            return
         if payload.get("error"):
             payload = {**payload, "error": _sanitize_error(str(payload["error"]))}
         t = threading.Thread(target=self._post_with_retry, args=(payload,), daemon=True)
@@ -42,6 +69,10 @@ class HttpClient:
 
     def fire_and_forget_batch(self, payloads: list) -> None:
         """Post a batch of events via /events/batch."""
+        # SDK-14: Check circuit breaker
+        if time.monotonic() < self._circuit_open_until:
+            logger.debug("agentmetrics: circuit open, dropping event")
+            return
         sanitized = [
             {**p, "error": _sanitize_error(str(p["error"]))}
             if p.get("error") else p
@@ -71,8 +102,21 @@ class HttpClient:
             try:
                 resp = requests.post(url, data=data, headers=headers, timeout=10)
                 if resp.status_code in (200, 201):
+                    self._record_success()  # SDK-14
                     return
+                # SDK-12: Honour Retry-After on 429
+                if resp.status_code == 429:
+                    retry_after = resp.headers.get("Retry-After")
+                    wait = float(retry_after) if retry_after else _backoff(attempt)
+                    logger.debug("AgentMetrics: rate limited, waiting %.1fs", wait)
+                    time.sleep(wait)
+                    continue
                 if resp.status_code == 404:
+                    # SDK-13: Elevate 404 fallback to info with explanation
+                    logger.info(
+                        "AgentMetrics: /events/batch not found — falling back to single-event endpoint. "
+                        "Upgrade the AgentMetrics server to enable batching."
+                    )
                     got_404 = True
                     break
                 logger.debug("AgentMetrics batch: non-2xx response %s", resp.status_code)
@@ -80,6 +124,9 @@ class HttpClient:
                 logger.debug("AgentMetrics batch: send failed (attempt %d): %s", attempt + 1, exc)
                 if attempt < retries - 1:
                     time.sleep(_backoff(attempt))
+        else:
+            # SDK-14: All retries exhausted without success
+            self._record_failure()
         if got_404:
             for payload in payloads:
                 self._post_with_retry(payload)
@@ -91,12 +138,22 @@ class HttpClient:
             try:
                 resp = requests.post(url, data=data, headers=headers, timeout=5)
                 if resp.status_code in (200, 201):
+                    self._record_success()  # SDK-14
                     return
+                # SDK-12: Honour Retry-After on 429
+                if resp.status_code == 429:
+                    retry_after = resp.headers.get("Retry-After")
+                    wait = float(retry_after) if retry_after else _backoff(attempt)
+                    logger.debug("AgentMetrics: rate limited, waiting %.1fs", wait)
+                    time.sleep(wait)
+                    continue
                 logger.debug("AgentMetrics: non-2xx response %s", resp.status_code)
             except Exception as exc:
                 logger.debug("AgentMetrics: send failed (attempt %d): %s", attempt + 1, exc)
                 if attempt < retries - 1:
                     time.sleep(_backoff(attempt))
+        # SDK-14: All retries exhausted without success
+        self._record_failure()
 
     def flush(self, timeout: float = 10.0) -> None:
         """Wait for all in-flight events to complete."""
@@ -104,8 +161,16 @@ class HttpClient:
             threads = list(self._pending_threads)
         for t in threads:
             t.join(timeout=timeout)
+        # SDK-10: Log a warning if threads are still alive after timeout
         with self._lock:
-            self._pending_threads = [t for t in self._pending_threads if t.is_alive()]
+            still_alive = [t for t in self._pending_threads if t.is_alive()]
+            if still_alive:
+                logger.warning(
+                    "agentmetrics: %d background thread(s) still running after flush timeout (%.1fs). "
+                    "Events may not have been delivered.",
+                    len(still_alive), timeout,
+                )
+            self._pending_threads = still_alive
 
 
 def _backoff(attempt: int, base: float = 1.0, cap: float = 16.0) -> float:

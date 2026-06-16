@@ -15,6 +15,7 @@ Usage:
 import shutil
 import subprocess
 import sys
+from urllib.parse import urlparse
 
 
 def main() -> None:
@@ -111,14 +112,25 @@ def _start_dashboard() -> None:
     sys.exit(result.returncode)
 
 
+def _validate_api_url(url: str) -> str:
+    """SDK-17: Validate that url has an http/https scheme and a host."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise SystemExit(f"Invalid API URL: must start with http:// or https://. Got: {url!r}")
+    if not parsed.netloc:
+        raise SystemExit(f"Invalid API URL: missing host. Got: {url!r}")
+    return url
+
+
 def _has_docker_compose() -> bool:
+    # SDK-15: Only catch expected errors, not bare Exception
     try:
         subprocess.run(
             ["docker", "compose", "version"],
             capture_output=True, check=True,
         )
         return True
-    except Exception:
+    except (FileNotFoundError, subprocess.CalledProcessError):
         return False
 
 

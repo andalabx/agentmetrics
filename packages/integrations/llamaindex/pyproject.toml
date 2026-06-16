@@ -21,3 +21,6 @@ Repository = "https://github.com/andalabx/agentmetrics"
 
 [tool.hatch.build.targets.wheel]
 packages = ["agentmetrics_llamaindex"]
+
+[tool.uv.sources]
+agentmetrics = { workspace = true }

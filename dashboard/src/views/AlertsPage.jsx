@@ -442,26 +442,6 @@ export default function AlertsPage() {
         {/* Slack integration */}
         <SlackWebhookPanel />
 
-        {/* Alert history - shown first so recent firings are immediately visible */}
-        {!loading && history.length > 0 && (
-          <section className="rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card sm:p-7">
-            <div className="flex items-center justify-between mb-5">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-danger">Recent firings</p>
-                <h2 className="mt-1 text-xl font-bold tracking-tight text-t1">Alert history</h2>
-              </div>
-              <span className="rounded-full border border-danger/25 bg-danger/10 px-3 py-1 text-xs font-bold text-danger">
-                {history.length}
-              </span>
-            </div>
-            <div className="flex flex-col gap-3">
-              {history.map((event) => (
-                <HistoryRow key={event.id} event={event} />
-              ))}
-            </div>
-          </section>
-        )}
-
         {/* Rules grid */}
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -494,6 +474,26 @@ export default function AlertsPage() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* Alert history */}
+        {!loading && history.length > 0 && (
+          <section className="rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card sm:p-7">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-danger">Recent firings</p>
+                <h2 className="mt-1 text-xl font-bold tracking-tight text-t1">Alert history</h2>
+              </div>
+              <span className="rounded-full border border-danger/25 bg-danger/10 px-3 py-1 text-xs font-bold text-danger">
+                {history.length}
+              </span>
+            </div>
+            <div className="flex flex-col gap-3">
+              {history.map((event) => (
+                <HistoryRow key={event.id} event={event} />
+              ))}
+            </div>
+          </section>
         )}
 
         {/* Custom rule form */}

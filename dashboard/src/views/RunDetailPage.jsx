@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation, useParams, Link } from "react-router-dom";
 import { getRun } from "../api/runs";
 import Seo from "../components/Seo";
 import AppLayout from "../components/layout/AppLayout";
@@ -91,8 +91,11 @@ function TokenBar({ label, value, total, color }) {
   );
 }
 
-export default function RunDetailPage({ traceId }) {
+export default function RunDetailPage({ traceId: traceIdProp }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const params   = useParams();
+  const traceId  = traceIdProp || params?.traceId;
   const [run, setRun]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]   = useState(null);
@@ -129,7 +132,9 @@ export default function RunDetailPage({ traceId }) {
         <div className="mb-5">
           <button
             onClick={() => {
-              if (run?.agent_id) navigate(`/agents/${encodeURIComponent(run.agent_id)}`);
+              const fromAgent = location.state?.from;
+              if (fromAgent) navigate(`/agents/${encodeURIComponent(fromAgent)}`);
+              else if (run?.agent_id) navigate(`/agents/${encodeURIComponent(run.agent_id)}`);
               else navigate(-1);
             }}
             className="flex items-center gap-1.5 text-xs text-t2 transition-colors hover:text-t1"
@@ -137,7 +142,11 @@ export default function RunDetailPage({ traceId }) {
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
-            {run?.agent_id ? `Back to ${run.agent_id}` : "Back"}
+            {location.state?.agentName
+              ? `Back to ${location.state.agentName}`
+              : run?.agent_id
+              ? `Back to ${run.agent_id}`
+              : "Back"}
           </button>
         </div>
 
@@ -256,7 +265,17 @@ export default function RunDetailPage({ traceId }) {
                 <MetaRow label="Trace ID"           value={run.trace_id}                mono />
                 <MetaRow label="Session ID"         value={run.session_id}              mono />
                 <MetaRow label="Run ID"             value={run.run_id}                  mono />
-                <MetaRow label="Parent trace"       value={run.parent_trace_id}         mono />
+                {run.parent_trace_id && (
+                  <div className="flex items-start justify-between gap-4 py-2.5 border-b border-[var(--border)]">
+                    <span className="text-xs text-t2 shrink-0">Parent trace</span>
+                    <Link
+                      to={`/runs/${run.parent_trace_id}`}
+                      className="font-mono text-xs font-medium text-accent text-right break-all transition-opacity hover:opacity-75"
+                    >
+                      {run.parent_trace_id}
+                    </Link>
+                  </div>
+                )}
                 <MetaRow label="Platform"           value={run.platform} />
                 <MetaRow label="Model"              value={run.model}                   mono />
                 <MetaRow label="Compactions"        value={run.compactions} />

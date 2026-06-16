@@ -97,7 +97,7 @@ function FleetScoreGauge({ health, loading }) {
           <p className="text-[10px] uppercase tracking-[0.2em] text-t2">Agent Health</p>
           <h2 className="mt-0.5 text-base font-bold tracking-tight text-t1">Overall score</h2>
         </div>
-        <a href="/insights" className="flex items-center gap-1 text-xs font-medium text-accent transition-opacity hover:opacity-75">
+        <a href="/cost" className="flex items-center gap-1 text-xs font-medium text-accent transition-opacity hover:opacity-75">
           Details
           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
         </a>
@@ -200,7 +200,7 @@ function MorningBriefing({ briefing, loading }) {
             <p className="mt-1.5 text-xs leading-relaxed text-t2">{briefing.body}</p>
           )}
           {briefing.cta && (
-            <a href="/insights?tab=optimize" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent transition-opacity hover:opacity-75">
+            <a href="/cost?tab=optimize" className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent transition-opacity hover:opacity-75">
               {briefing.cta}
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
             </a>
@@ -755,7 +755,7 @@ export default function DashboardPage() {
                     <p className="text-[10px] uppercase tracking-[0.2em] text-t2">Agent health</p>
                     <h2 className="mt-1 text-lg font-bold tracking-tight text-t1">Agent status breakdown</h2>
                   </div>
-                  <a href="/insights" className="flex items-center gap-1 text-xs font-medium text-accent transition-opacity hover:opacity-75">
+                  <a href="/cost" className="flex items-center gap-1 text-xs font-medium text-accent transition-opacity hover:opacity-75">
                     Insights
                     <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
                   </a>
@@ -769,7 +769,7 @@ export default function DashboardPage() {
                     <p className="text-[10px] uppercase tracking-[0.2em] text-cost">Spend</p>
                     <h2 className="mt-1 text-lg font-bold tracking-tight text-t1">Cost by agent</h2>
                   </div>
-                  <a href="/insights?tab=cost" className="flex items-center gap-1 text-xs font-medium text-cost/70 transition-colors hover:text-cost">
+                  <a href="/cost" className="flex items-center gap-1 text-xs font-medium text-cost/70 transition-colors hover:text-cost">
                     Full breakdown
                     <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
                   </a>
@@ -812,7 +812,7 @@ export default function DashboardPage() {
                   {topRec ? (
                     <>
                       <div className="mt-4"><RecCard rec={topRec} /></div>
-                      <a href="/insights?tab=optimize" className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-accent transition-opacity hover:opacity-75">
+                      <a href="/cost?tab=optimize" className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-accent transition-opacity hover:opacity-75">
                         {recommendations.length > 1 ? `View all ${recommendations.length} recommendations` : "View recommendations"}
                         <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
                       </a>

@@ -47,6 +47,8 @@ services:
       POSTGRES_USER: agentmetrics
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentmetrics}
       POSTGRES_DB: agentmetrics
+    ports:
+      - "127.0.0.1:5432:5432"  # bind to loopback only (SEC-K02)
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:

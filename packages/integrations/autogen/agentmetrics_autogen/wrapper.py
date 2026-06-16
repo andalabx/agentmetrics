@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from typing import Any
@@ -94,6 +95,8 @@ class _RunContext:
         self._output_tokens = 0
         self._status = "success"
         self._error: str | None = None
+        # INT-11: track whether a TaskResult was received
+        self._saw_result = False
 
     async def __aenter__(self) -> _TrackingStream:
         self._start_ms = time.monotonic()
@@ -101,9 +104,32 @@ class _RunContext:
         return _TrackingStream(raw_stream, self)
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        # INT-12: handle CancelledError — set status to "cancelled" and re-raise
+        if exc_type is asyncio.CancelledError:
+            self._status = "cancelled"
+            duration_ms = (time.monotonic() - self._start_ms) * 1000
+            payload = _build_payload(
+                self._agent_id,
+                self._trace_id,
+                self._status,
+                duration_ms,
+                self._tool_calls,
+                self._tool_errors,
+                self._tool_names,
+                self._llm_calls,
+                self._input_tokens,
+                self._output_tokens,
+                self._error,
+            )
+            self._client.fire_and_forget(payload)
+            return False  # do not suppress — let CancelledError propagate
         if exc_type is not None:
             self._status = "failed"
             self._error  = str(exc_val)
+        # INT-11: if stream ended normally but no TaskResult was seen, mark as failed
+        if exc_type is None and not self._saw_result:
+            self._status = "failed"
+            self._error  = "Stream ended without TaskResult (possible cancellation)"
         duration_ms = (time.monotonic() - self._start_ms) * 1000
         payload = _build_payload(
             self._agent_id,
@@ -167,15 +193,30 @@ class _TrackingStream:
                         self._ctx._tool_names.add(str(name))
 
         elif cls_name == "ToolCallExecutionEvent":
-            content = getattr(event, "content", None)
-            if content:
-                results = content if isinstance(content, list) else [content]
-                for r in results:
-                    if getattr(r, "is_error", False):
-                        self._ctx._tool_errors += 1
+            # INT-09: use structured is_error field, with import guard for resilience
+            try:
+                from autogen_agentchat.messages import ToolCallExecutionEvent as _TCE
+                if isinstance(event, _TCE):
+                    for result in (event.content if hasattr(event.content, "__iter__") else []):
+                        if getattr(result, "is_error", False):
+                            self._ctx._tool_errors += 1
+                        elif isinstance(result, dict) and result.get("is_error"):
+                            self._ctx._tool_errors += 1
+            except (ImportError, TypeError, AttributeError):
+                # Fallback: check is_error directly on content items
+                content = getattr(event, "content", None)
+                if content:
+                    results = content if isinstance(content, list) else [content]
+                    for r in results:
+                        if getattr(r, "is_error", False):
+                            self._ctx._tool_errors += 1
 
-        elif cls_name == "TaskResult":
+        elif cls_name == "TaskResult" or hasattr(event, "stop_reason"):
+            # INT-11: mark that a TaskResult was received
+            self._ctx._saw_result = True
             stop = getattr(event, "stop_reason", None)
             if stop and "error" in str(stop).lower():
                 self._ctx._status = "failed"
                 self._ctx._error  = str(stop)[:500]
+            else:
+                self._ctx._status = "success"

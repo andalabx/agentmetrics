@@ -54,36 +54,76 @@ class _RunState:
         self.error: str | None = None
 
 
-def _extract_tokens(response: Any) -> tuple[int, int, int, int, str | None]:
-    """Return (input, output, cache_read, cache_write, model) from any LLM response."""
-    inp = out = cr = cw = 0
-    model = None
-    raw = getattr(response, "raw", None)
-    if raw:
-        if hasattr(raw, "get"):
-            usage = raw.get("usage") or {}
-            inp   = usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0
-            out   = usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or 0
-            cr    = usage.get("cache_read_input_tokens", 0) or 0
-            cw    = usage.get("cache_creation_input_tokens", 0) or 0
-            model = raw.get("model")
-        else:
+# INT-05: multi-path token extraction helper
+def _extract_tokens(response: Any) -> dict:
+    """Return a dict with token counts extracted from any known LlamaIndex response shape."""
+    for path in [
+        lambda r: getattr(r, "raw", {}).get("usage") if hasattr(r, "raw") and hasattr(getattr(r, "raw", None), "get") else None,
+        lambda r: getattr(r, "additional_kwargs", {}).get("usage"),
+        lambda r: getattr(r, "usage", None),
+        lambda r: (getattr(r, "metadata", None) or {}).get("usage"),
+    ]:
+        try:
+            usage = path(response)
+            if usage and isinstance(usage, dict):
+                return {
+                    "input_tokens": usage.get("prompt_tokens") or usage.get("input_tokens", 0),
+                    "output_tokens": usage.get("completion_tokens") or usage.get("output_tokens", 0),
+                    "cache_read_tokens": usage.get("cache_read_input_tokens"),
+                    "cache_write_tokens": usage.get("cache_creation_input_tokens"),
+                    "model": None,
+                }
+            if usage and hasattr(usage, "prompt_tokens"):
+                return {
+                    "input_tokens": getattr(usage, "prompt_tokens", 0),
+                    "output_tokens": getattr(usage, "completion_tokens", 0),
+                    "cache_read_tokens": None,
+                    "cache_write_tokens": None,
+                    "model": None,
+                }
+        except (AttributeError, TypeError):
+            continue
+
+    # Final fallback: try raw as object with usage attribute
+    try:
+        raw = getattr(response, "raw", None)
+        if raw and not hasattr(raw, "get"):
             u = getattr(raw, "usage", None)
             if u:
-                inp = getattr(u, "prompt_tokens", 0) or getattr(u, "input_tokens", 0) or 0
-                out = getattr(u, "completion_tokens", 0) or getattr(u, "output_tokens", 0) or 0
-                cr  = getattr(u, "cache_read_input_tokens", 0) or 0
-                cw  = getattr(u, "cache_creation_input_tokens", 0) or 0
-            model = getattr(raw, "model", None)
-    # fallback: additional_kwargs
-    if not inp:
-        ak    = getattr(response, "additional_kwargs", {}) or {}
-        usage = ak.get("usage") or {}
-        inp   = usage.get("input_tokens", 0) or 0
-        out   = usage.get("output_tokens", 0) or 0
-        cr    = usage.get("cache_read_input_tokens", 0) or 0
-        cw    = usage.get("cache_creation_input_tokens", 0) or 0
-    return inp, out, cr, cw, model
+                return {
+                    "input_tokens": getattr(u, "prompt_tokens", 0) or getattr(u, "input_tokens", 0) or 0,
+                    "output_tokens": getattr(u, "completion_tokens", 0) or getattr(u, "output_tokens", 0) or 0,
+                    "cache_read_tokens": getattr(u, "cache_read_input_tokens", None),
+                    "cache_write_tokens": getattr(u, "cache_creation_input_tokens", None),
+                    "model": getattr(raw, "model", None),
+                }
+    except (AttributeError, TypeError):
+        pass
+
+    return {}
+
+
+# INT-06: module-level root span cache to avoid O(n) walks per span
+_root_cache: dict[str, str] = {}
+
+
+def _find_root(span_id: str, spans: dict, _visited: set | None = None) -> str:
+    """Walk up the span hierarchy to find the root, with caching and cycle protection."""
+    if span_id in _root_cache:
+        return _root_cache[span_id]
+    if _visited is None:
+        _visited = set()
+    if span_id in _visited:
+        return span_id  # cycle guard
+    _visited.add(span_id)
+    span = spans.get(span_id)
+    parent = span.parent_id if span is not None else None
+    if not parent or parent not in spans:
+        _root_cache[span_id] = span_id
+        return span_id
+    root = _find_root(parent, spans, _visited)
+    _root_cache[span_id] = root
+    return root
 
 
 class AgentMetricsEventHandler(BaseEventHandler):
@@ -105,13 +145,17 @@ class AgentMetricsEventHandler(BaseEventHandler):
             state.llm_calls += 1
             response = getattr(event, "response", None)
             if response:
-                inp, out, cr, cw, model = _extract_tokens(response)
-                state.input_tokens       += inp
-                state.output_tokens      += out
-                state.cache_read_tokens  += cr
-                state.cache_write_tokens += cw
-                if not state.model and model:
-                    state.model = model
+                tokens = _extract_tokens(response)
+                state.input_tokens       += tokens.get("input_tokens") or 0
+                state.output_tokens      += tokens.get("output_tokens") or 0
+                cr = tokens.get("cache_read_tokens")
+                cw = tokens.get("cache_write_tokens")
+                if cr is not None:
+                    state.cache_read_tokens  += cr
+                if cw is not None:
+                    state.cache_write_tokens += cw
+                if not state.model and tokens.get("model"):
+                    state.model = tokens["model"]
 
         elif isinstance(event, AgentToolCallEvent):
             state.tool_calls += 1
@@ -120,6 +164,11 @@ class AgentMetricsEventHandler(BaseEventHandler):
                 name = getattr(tool_meta, "name", None)
                 if name:
                     state.tool_names.add(name)
+
+        # INT-07: extract tool errors from the exception field in tool call events
+        payload = getattr(event, "payload", None)
+        if payload is not None and isinstance(payload, dict) and payload.get("exception") is not None:
+            state.tool_errors = getattr(state, "tool_errors", 0) + 1
 
 
 class AgentMetricsSpanHandler(BaseSpanHandler[SimpleSpan]):
@@ -241,6 +290,20 @@ class AgentMetricsSpanHandler(BaseSpanHandler[SimpleSpan]):
 
     def flush(self, timeout: float = 10.0) -> None:
         self._client.flush(timeout=timeout)
+
+
+# INT-08: append to existing callback manager instead of replacing it
+def register_handler(handler: Any) -> None:
+    """Register a LlamaIndex handler without clobbering an existing callback manager."""
+    try:
+        from llama_index.core import Settings
+        if Settings.callback_manager is None:
+            from llama_index.core.callbacks import CallbackManager
+            Settings.callback_manager = CallbackManager([handler])
+        else:
+            Settings.callback_manager.add_handler(handler)
+    except (ImportError, AttributeError):
+        pass  # older LlamaIndex versions
 
 
 def instrument(
