@@ -1,6 +1,6 @@
 {
   "name": "agentmetrics-openclaw",
-  "version": "0.1.0",
+  "version": "0.2.4",
   "type": "module",
   "description": "AgentMetrics observability plugin for OpenClaw agents",
   "license": "MIT",
@@ -9,15 +9,25 @@
     "type": "git",
     "url": "git+https://github.com/andalabx/agentmetrics.git"
   },
-  "keywords": ["openclaw", "agentmetrics", "observability", "ai-agents", "monitoring"],
+  "keywords": [
+    "openclaw",
+    "agentmetrics",
+    "observability",
+    "ai-agents",
+    "monitoring"
+  ],
   "peerDependencies": {
     "openclaw": ">=2026.3.2"
   },
   "peerDependenciesMeta": {
-    "openclaw": { "optional": true }
+    "openclaw": {
+      "optional": true
+    }
   },
   "openclaw": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "files": [
     "index.ts",

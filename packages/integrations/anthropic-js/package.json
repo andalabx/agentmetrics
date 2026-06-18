@@ -9,7 +9,14 @@
     "type": "git",
     "url": "git+https://github.com/andalabx/agentmetrics.git"
   },
-  "keywords": ["anthropic", "claude", "managed-agents", "agentmetrics", "observability", "ai-agents"],
+  "keywords": [
+    "anthropic",
+    "claude",
+    "managed-agents",
+    "agentmetrics",
+    "observability",
+    "ai-agents"
+  ],
   "exports": {
     ".": {
       "import": "./dist/index.js",

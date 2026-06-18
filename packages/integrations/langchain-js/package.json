@@ -9,7 +9,13 @@
     "type": "git",
     "url": "git+https://github.com/andalabx/agentmetrics.git"
   },
-  "keywords": ["langchain", "agentmetrics", "observability", "ai-agents", "monitoring"],
+  "keywords": [
+    "langchain",
+    "agentmetrics",
+    "observability",
+    "ai-agents",
+    "monitoring"
+  ],
   "exports": {
     ".": {
       "import": "./dist/index.js",

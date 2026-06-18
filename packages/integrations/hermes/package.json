@@ -9,15 +9,25 @@
     "type": "git",
     "url": "git+https://github.com/andalabx/agentmetrics.git"
   },
-  "keywords": ["hermes", "agentmetrics", "observability", "ai-agents", "monitoring"],
+  "keywords": [
+    "hermes",
+    "agentmetrics",
+    "observability",
+    "ai-agents",
+    "monitoring"
+  ],
   "peerDependencies": {
     "hermes": ">=2026.1.0"
   },
   "peerDependenciesMeta": {
-    "hermes": { "optional": true }
+    "hermes": {
+      "optional": true
+    }
   },
   "hermes": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   },
   "files": [
     "index.ts",

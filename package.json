@@ -7,5 +7,6 @@
     "build": "pnpm --filter dashboard build",
     "lint": "pnpm --recursive run lint",
     "type-check": "pnpm --recursive run type-check"
-  }
+  },
+  "version": ""
 }
