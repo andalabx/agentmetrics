@@ -1,53 +1,5 @@
 import { HttpClient } from "./http-client";
 
-// (inputPerM, outputPerM, cacheReadPerM?, cacheWritePerM?) - USD per million tokens
-const _PRICING: Record<string, [number, number, number?, number?]> = {
-  "claude-opus-4-7":               [15.0,  75.0,  1.50,  18.75],
-  "claude-sonnet-4-6":             [3.0,   15.0,  0.30,  3.75],
-  "claude-haiku-4-5":              [0.8,   4.0,   0.08,  1.00],
-  "claude-haiku-4-5-20251001":     [0.8,   4.0,   0.08,  1.00],
-  "claude-3-7-sonnet-20250219":    [3.0,   15.0,  0.30,  3.75],
-  "claude-3-5-sonnet-20241022":    [3.0,   15.0,  0.30,  3.75],
-  "claude-3-5-haiku-20241022":     [0.8,   4.0,   0.08,  1.00],
-  "claude-3-opus-20240229":        [15.0,  75.0,  1.50,  18.75],
-  "claude-3-sonnet-20240229":      [3.0,   15.0,  0.30,  3.75],
-  "claude-3-haiku-20240307":       [0.25,  1.25,  0.03,  0.30],
-  "gpt-4o":                        [2.5,   10.0],
-  "gpt-4o-mini":                   [0.15,  0.60],
-  "gpt-4-turbo":                   [10.0,  30.0],
-  "gpt-4":                         [30.0,  60.0],
-  "gpt-3.5-turbo":                 [0.50,  1.50],
-  "o1":                            [15.0,  60.0],
-  "o1-mini":                       [3.0,   12.0],
-  "o3-mini":                       [1.10,  4.40],
-  "gemini-2.0-flash":              [0.075, 0.30],
-  "gemini-2.0-flash-lite":         [0.075, 0.30],
-  "gemini-1.5-pro":                [1.25,  5.00],
-  "gemini-1.5-flash":              [0.075, 0.30],
-};
-
-function _estimateCost(
-  model: string | undefined,
-  input: number,
-  output: number,
-  cacheRead = 0,
-  cacheWrite = 0,
-): number | undefined {
-  if (!model) return undefined;
-  let rates = _PRICING[model];
-  if (!rates) {
-    const key = Object.keys(_PRICING).find((k) => model.startsWith(k));
-    if (key) rates = _PRICING[key];
-  }
-  if (!rates) return undefined;
-  const [rIn, rOut, rCr = 0, rCw = 0] = rates;
-  return Math.round((
-    input      * rIn  / 1_000_000
-    + output   * rOut / 1_000_000
-    + cacheRead  * rCr  / 1_000_000
-    + cacheWrite * rCw  / 1_000_000
-  ) * 1e8) / 1e8;
-}
 
 export interface AgentMetricsOptions {
   apiKey?: string;
@@ -411,8 +363,6 @@ export class AgentMetrics {
         if (ctx.cacheReadTokens) event["cache_read_tokens"] = ctx.cacheReadTokens;
         if (ctx.cacheWriteTokens) event["cache_write_tokens"] = ctx.cacheWriteTokens;
         if (ctx.llmCalls) event["llm_calls"] = ctx.llmCalls;
-        const est = _estimateCost(ctx.model, ctx.inputTokens, ctx.outputTokens, ctx.cacheReadTokens, ctx.cacheWriteTokens);
-        if (est !== undefined) event["estimated_cost_usd"] = est;
         const meta: Record<string, unknown> = { ...(opts.metadata ?? {}) };
         if (ctx.steps.length) {
           meta["steps"] = ctx.steps.map((s) => ({

@@ -78,62 +78,6 @@ def _extract_stream_usage(chunk: Any) -> dict:  # type annotation — wraps arbi
         return {"input_tokens": input_tokens, "output_tokens": output_tokens}
     return {}
 
-# (input, output, cacheRead, cacheWrite) - cost per million tokens
-_PRICING: dict[str, tuple] = {
-    "claude-opus-4-7":                  (15.0,  75.0,  1.50,  18.75),
-    "claude-sonnet-4-6":                (3.0,   15.0,  0.30,  3.75),
-    "claude-haiku-4-5":                 (0.8,   4.0,   0.08,  1.00),
-    "claude-haiku-4-5-20251001":        (0.8,   4.0,   0.08,  1.00),
-    "claude-3-7-sonnet-20250219":       (3.0,   15.0,  0.30,  3.75),
-    "claude-3-5-sonnet-20241022":       (3.0,   15.0,  0.30,  3.75),
-    "claude-3-5-haiku-20241022":        (0.8,   4.0,   0.08,  1.00),
-    "claude-3-opus-20240229":           (15.0,  75.0,  1.50,  18.75),
-    "claude-3-sonnet-20240229":         (3.0,   15.0,  0.30,  3.75),
-    "claude-3-haiku-20240307":          (0.25,  1.25,  0.03,  0.30),
-    "gpt-4o":                           (2.5,   10.0),
-    "gpt-4o-mini":                      (0.15,  0.60),
-    "gpt-4-turbo":                      (10.0,  30.0),
-    "gpt-4":                            (30.0,  60.0),
-    "gpt-3.5-turbo":                    (0.50,  1.50),
-    "o1":                               (15.0,  60.0),
-    "o1-mini":                          (3.0,   12.0),
-    "o3-mini":                          (1.10,  4.40),
-    "gemini-2.0-flash":                 (0.075, 0.30),
-    "gemini-2.0-flash-lite":            (0.075, 0.30),
-    "gemini-1.5-pro":                   (1.25,  5.00),
-    "gemini-1.5-flash":                 (0.075, 0.30),
-}
-
-
-def _estimate_cost(
-    model: str | None,
-    input_tokens: int,
-    output_tokens: int,
-    cache_read_tokens: int = 0,
-    cache_write_tokens: int = 0,
-) -> float | None:
-    if not model:
-        return None
-    rates = _PRICING.get(model)
-    if not rates:
-        # Try prefix match (e.g. "claude-sonnet-4-6-20260101" → "claude-sonnet-4-6")
-        for key, r in _PRICING.items():
-            if model.startswith(key):
-                rates = r
-                break
-    if not rates:
-        return None
-    r_in, r_out = rates[0], rates[1]
-    r_cr = rates[2] if len(rates) > 2 else 0.0
-    r_cw = rates[3] if len(rates) > 3 else 0.0
-    cost = (
-        input_tokens       * r_in  / 1_000_000
-        + output_tokens    * r_out / 1_000_000
-        + cache_read_tokens  * r_cr  / 1_000_000
-        + cache_write_tokens * r_cw  / 1_000_000
-    )
-    return round(cost, 8)
-
 
 _current_trace_id: ContextVar[str | None] = ContextVar("agentmetrics_trace_id", default=None)
 _current_agent_id: ContextVar[str | None] = ContextVar("agentmetrics_agent_id", default=None)
@@ -273,10 +217,6 @@ class _ToolContext:
     async def __aexit__(self, exc_type: type[BaseException] | None, exc_val: BaseException | None, exc_tb: Any) -> bool:
         return self.__exit__(exc_type, exc_val, exc_tb)
 
-
-# ---------------------------------------------------------------------------
-# Auto-instrumentation patches - each returns True if the library is installed
-# ---------------------------------------------------------------------------
 
 def _patch_litellm(on_response: Callable[..., None]) -> bool:  # type annotation — wraps arbitrary callable
     # SEC-J01: Acquire patch lock to prevent race conditions
@@ -682,10 +622,6 @@ def _count_loops(tool_calls: list, threshold: int = _TOOL_LOOP_THRESHOLD) -> int
     return count
 
 
-# ---------------------------------------------------------------------------
-# Main Tracker class
-# ---------------------------------------------------------------------------
-
 class Tracker:
     def __init__(self) -> None:
         self._api_key: str | None = None
@@ -927,9 +863,6 @@ class Tracker:
                 payload["cache_read_tokens"] = cr_tok
             if cw_tok:
                 payload["cache_write_tokens"] = cw_tok
-            est = _estimate_cost(model, input_tok, output_tok, cr_tok, cw_tok)
-            if est is not None:
-                payload["estimated_cost_usd"] = est
         metadata: dict[str, Any] = {}
         if steps:
             metadata["steps"] = steps

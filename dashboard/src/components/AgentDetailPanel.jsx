@@ -1,39 +1,13 @@
-import React, { useCallback, useState } from "react";
+import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getAgent, getAgentHourly, getAgentRuns, getAgentNames, renameAgent } from "../api/agents";
+import { getAgentRuns } from "../api/agents";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RTooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import usePolling from "../hooks/usePolling";
-
-/* ---------- helpers ---------- */
-
-function fmtMs(ms) {
-  if (ms == null) return "N/A";
-  if (ms < 1000) return `${ms.toFixed(0)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
-function timeSince(dateStr) {
-  const secs = Math.floor((Date.now() - new Date(dateStr)) / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  return `${Math.floor(secs / 86400)}d ago`;
-}
-
-function agentDisplayName(agentId, namesMap) {
-  if (namesMap && namesMap[agentId]) return namesMap[agentId];
-  if (agentId === "main") return "OpenClaw (main)";
-  return agentId;
-}
-
-function healthOf(successRate) {
-  if (successRate >= 95) return "healthy";
-  if (successRate >= 80) return "degraded";
-  return "critical";
-}
+import { useAgentData, useAgentRename } from "../hooks/useAgentData";
+import { fmtMs, fmtDur, timeSince, agentDisplayName, healthOf } from "../lib/helpers";
 
 const statusConfig = {
   healthy:  { color: "text-savings", bg: "border-savings/25 bg-savings/[0.06]", dot: "bg-savings",  label: "Healthy" },
@@ -41,13 +15,6 @@ const statusConfig = {
   critical: { color: "text-danger",  bg: "border-danger/25 bg-danger/[0.06]",   dot: "bg-danger",   label: "Critical" },
 };
 
-function fmtDur(ms) {
-  if (ms == null) return "-";
-  if (ms < 1000) return `${ms.toFixed(0)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
-/* ---------- mini stat card ---------- */
 function MiniStat({ label, value, valueClass = "text-t1" }) {
   return (
     <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-3">
@@ -57,7 +24,12 @@ function MiniStat({ label, value, valueClass = "text-t1" }) {
   );
 }
 
-/* ---------- mini runs table ---------- */
+MiniStat.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  valueClass: PropTypes.string,
+};
+
 function MiniRunsTable({ runs }) {
   if (!runs?.length) {
     return <p className="py-6 text-center text-xs text-t2">No runs recorded yet.</p>;
@@ -110,60 +82,29 @@ function MiniRunsTable({ runs }) {
   );
 }
 
-/* ---------- main panel ---------- */
+MiniRunsTable.propTypes = {
+  runs: PropTypes.arrayOf(PropTypes.shape({
+    trace_id: PropTypes.string.isRequired,
+    status: PropTypes.string.isRequired,
+    duration_ms: PropTypes.number,
+    cost_usd: PropTypes.number,
+    started_at: PropTypes.string,
+  })),
+};
+
 export default function AgentDetailPanel({ agentId, onClose }) {
-  const [agent, setAgent] = useState(null);
-  const [namesMap, setNamesMap] = useState({});
-  const [hourlyData, setHourlyData] = useState([]);
+  const { agent, namesMap, setNamesMap, hourlyData, loading, error } = useAgentData(agentId, 10_000);
+  const { renaming, nameInput, setNameInput, savingName, startRename, saveRename, cancelRename } =
+    useAgentRename(agentId, namesMap, setNamesMap);
+
   const [runs, setRuns] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  // rename state
-  const [renaming, setRenaming] = useState(false);
-  const [nameInput, setNameInput] = useState("");
-  const [savingName, setSavingName] = useState(false);
-
-  const fetchData = useCallback(async () => {
+  useEffect(() => {
     if (!agentId) return;
-    try {
-      const [agentRes, namesRes, hourlyRes, runsRes] = await Promise.all([
-        getAgent(agentId),
-        getAgentNames(),
-        getAgentHourly(agentId).catch(() => ({ data: [] })),
-        getAgentRuns(agentId, { limit: 10 }).catch(() => ({ data: { runs: [] } })),
-      ]);
-      setAgent(agentRes.data);
-      setNamesMap(namesRes.data);
-      setHourlyData(hourlyRes.data || []);
-      setRuns(runsRes.data?.runs ?? []);
-      setError(null);
-    } catch (err) {
-      setError(
-        err.response?.status === 404 ? "Agent not found" : "Failed to load agent data"
-      );
-    } finally {
-      setLoading(false);
-    }
+    getAgentRuns(agentId, { limit: 10 })
+      .then((res) => setRuns(res.data?.runs ?? []))
+      .catch(() => {});
   }, [agentId]);
-
-  usePolling(fetchData, 10_000);
-
-  const handleSaveRename = async () => {
-    setSavingName(true);
-    try {
-      const { data } = await renameAgent(agentId, nameInput);
-      setNamesMap(data);
-      setRenaming(false);
-    } finally {
-      setSavingName(false);
-    }
-  };
-
-  const startRename = () => {
-    setNameInput(namesMap[agentId] || "");
-    setRenaming(true);
-  };
 
   if (!agentId) return null;
 
@@ -209,21 +150,21 @@ export default function AgentDetailPanel({ agentId, onClose }) {
                 value={nameInput}
                 onChange={(e) => setNameInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSaveRename();
-                  if (e.key === "Escape") setRenaming(false);
+                  if (e.key === "Enter") saveRename();
+                  if (e.key === "Escape") cancelRename();
                 }}
                 placeholder="Display name..."
                 className="w-36 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1 text-sm text-t1 placeholder:text-t2 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
               />
               <button
-                onClick={handleSaveRename}
+                onClick={() => saveRename()}
                 disabled={savingName}
                 className="rounded-lg bg-accent px-2.5 py-1 text-[10px] font-semibold text-accent-txt transition-opacity hover:opacity-90 disabled:opacity-50"
               >
                 {savingName ? "..." : "Save"}
               </button>
               <button
-                onClick={() => setRenaming(false)}
+                onClick={cancelRename}
                 className="text-[10px] text-t2 hover:text-t1"
               >
                 Cancel
@@ -352,3 +293,8 @@ export default function AgentDetailPanel({ agentId, onClose }) {
     </div>
   );
 }
+
+AgentDetailPanel.propTypes = {
+  agentId: PropTypes.string,
+  onClose: PropTypes.func.isRequired,
+};

@@ -34,12 +34,16 @@ The server creates a SQLite database at `./agentmetrics.db` on first run and pri
 **Dashboard**
 
 ```bash
+pnpm install        # installs all workspace packages; regenerates pnpm-lock.yaml
 cd dashboard
-npm install
-npm run dev
+pnpm dev
 ```
 
 Opens at `http://localhost:3099`. Vite proxies `/v1/` to the API automatically.
+
+> **Note:** Always commit `pnpm-lock.yaml` after adding or upgrading dependencies.
+> Run `pnpm install` from the repo root (not inside a package subdirectory) to keep
+> the workspace lockfile in sync.
 
 ---
 

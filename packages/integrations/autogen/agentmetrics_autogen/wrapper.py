@@ -19,9 +19,12 @@ def _build_payload(
     llm_calls: int,
     input_tokens: int,
     output_tokens: int,
+    cache_read_tokens: int,
+    cache_write_tokens: int,
+    estimated_cost_usd: float | None,
     error: str | None,
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "event_id":                 str(uuid.uuid4()),
         "trace_id":                 trace_id,
         "agent_id":                 agent_id,
@@ -37,8 +40,16 @@ def _build_payload(
         "llm_calls":     llm_calls,
         "input_tokens":  input_tokens,
         "output_tokens": output_tokens,
-        **({"error": error[:500]} if error else {}),
     }
+    if cache_read_tokens:
+        payload["cache_read_tokens"] = cache_read_tokens
+    if cache_write_tokens:
+        payload["cache_write_tokens"] = cache_write_tokens
+    if estimated_cost_usd is not None:
+        payload["estimated_cost_usd"] = estimated_cost_usd
+    if error:
+        payload["error"] = error[:500]
+    return payload
 
 
 class AgentMetricsRunStream:
@@ -93,6 +104,8 @@ class _RunContext:
         self._llm_calls    = 0
         self._input_tokens  = 0
         self._output_tokens = 0
+        self._cache_read_tokens  = 0
+        self._cache_write_tokens = 0
         self._status = "success"
         self._error: str | None = None
         # INT-11: track whether a TaskResult was received
@@ -119,6 +132,9 @@ class _RunContext:
                 self._llm_calls,
                 self._input_tokens,
                 self._output_tokens,
+                self._cache_read_tokens,
+                self._cache_write_tokens,
+                None,
                 self._error,
             )
             self._client.fire_and_forget(payload)
@@ -142,6 +158,9 @@ class _RunContext:
             self._llm_calls,
             self._input_tokens,
             self._output_tokens,
+            self._cache_read_tokens,
+            self._cache_write_tokens,
+            None,
             self._error,
         )
         self._client.fire_and_forget(payload)
@@ -175,11 +194,15 @@ class _TrackingStream:
             self._ctx._llm_calls += 1
             usage = getattr(event, "usage", None) or {}
             if isinstance(usage, dict):
-                self._ctx._input_tokens  += usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0
-                self._ctx._output_tokens += usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or 0
+                self._ctx._input_tokens       += usage.get("prompt_tokens", 0) or usage.get("input_tokens", 0) or 0
+                self._ctx._output_tokens      += usage.get("completion_tokens", 0) or usage.get("output_tokens", 0) or 0
+                self._ctx._cache_read_tokens  += usage.get("cache_read_input_tokens", 0) or 0
+                self._ctx._cache_write_tokens += usage.get("cache_creation_input_tokens", 0) or 0
             else:
-                self._ctx._input_tokens  += getattr(usage, "prompt_tokens", 0) or getattr(usage, "input_tokens", 0) or 0
-                self._ctx._output_tokens += getattr(usage, "completion_tokens", 0) or getattr(usage, "output_tokens", 0) or 0
+                self._ctx._input_tokens       += getattr(usage, "prompt_tokens", 0) or getattr(usage, "input_tokens", 0) or 0
+                self._ctx._output_tokens      += getattr(usage, "completion_tokens", 0) or getattr(usage, "output_tokens", 0) or 0
+                self._ctx._cache_read_tokens  += getattr(usage, "cache_read_input_tokens", 0) or 0
+                self._ctx._cache_write_tokens += getattr(usage, "cache_creation_input_tokens", 0) or 0
 
         elif cls_name == "ToolCallRequestEvent":
             self._ctx._tool_calls += 1

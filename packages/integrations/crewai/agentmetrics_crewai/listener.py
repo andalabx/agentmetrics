@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from typing import Any
@@ -81,6 +82,7 @@ class AgentMetricsListener(BaseEventListener):
     ) -> None:
         self._client     = HttpClient(api_key=api_key, base_url=base_url)
         self._agent_id   = agent_id
+        self._lock = threading.Lock()
         # run_key (UUID str) → KickoffState (tracks concurrent kickoffs)
         self._active: dict[str, _KickoffState] = {}
         # source_fingerprint → run_key; allows other events to find their state
@@ -95,22 +97,25 @@ class AgentMetricsListener(BaseEventListener):
             run_key = str(uuid.uuid4())
             fp = event.source_fingerprint or run_key
             name = event.crew_name or self._agent_id
-            self._active[run_key] = _KickoffState(name)
-            self._fingerprint_map[fp] = run_key
+            with self._lock:
+                self._active[run_key] = _KickoffState(name)
+                self._fingerprint_map[fp] = run_key
 
         def _state_for_event(event: Any) -> _KickoffState | None:
             fp = event.source_fingerprint or ""
-            run_key = self._fingerprint_map.get(fp)
-            if run_key is None:
-                return None
-            return self._active.get(run_key)
+            with self._lock:
+                run_key = self._fingerprint_map.get(fp)
+                if run_key is None:
+                    return None
+                return self._active.get(run_key)
 
         def _pop_state_for_event(event: Any) -> _KickoffState | None:
             fp = event.source_fingerprint or ""
-            run_key = self._fingerprint_map.pop(fp, None)
-            if run_key is None:
-                return None
-            return self._active.pop(run_key, None)
+            with self._lock:
+                run_key = self._fingerprint_map.pop(fp, None)
+                if run_key is None:
+                    return None
+                return self._active.pop(run_key, None)
 
         @crewai_event_bus.on(LLMCallCompletedEvent)
         def on_llm_completed(source: Any, event: LLMCallCompletedEvent) -> None:

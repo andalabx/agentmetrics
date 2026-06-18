@@ -38,6 +38,7 @@ class EventCreate(BaseModel):
     tool_names: list[str] | None = None  # unique tool names used in run
     # Run shape
     step_count: int | None = None
+    loop_count: int | None = None
     llm_calls: int | None = None
     images_count: int | None = None
     # Subagents

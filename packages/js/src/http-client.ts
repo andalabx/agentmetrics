@@ -83,9 +83,16 @@ export class HttpClient {
           signal: AbortSignal.timeout(5000),
         });
         if (resp.ok) return;
-      } catch {
+        if (attempt === retries - 1) {
+          // eslint-disable-next-line no-console -- surface delivery failure to the library user; no logger available in this zero-dependency package
+          console.warn(`[agentmetrics] failed to deliver event after ${retries} attempts (HTTP ${resp.status}): ${url}`);
+        }
+      } catch (err) {
         if (attempt < retries - 1) {
           await new Promise((r) => setTimeout(r, backoff(attempt)));
+        } else {
+          // eslint-disable-next-line no-console -- surface delivery failure to the library user; no logger available in this zero-dependency package
+          console.warn(`[agentmetrics] failed to deliver event after ${retries} attempts: ${err instanceof Error ? err.message : String(err)}`);
         }
       }
     }

@@ -1,4 +1,4 @@
-import React from "react";
+import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 
 function StatusBadge({ rate }) {
@@ -14,6 +14,10 @@ function StatusBadge({ rate }) {
   );
 }
 
+StatusBadge.propTypes = {
+  rate: PropTypes.number.isRequired,
+};
+
 function Stat({ label, value, valueClass = "text-t1" }) {
   return (
     <div>
@@ -22,6 +26,12 @@ function Stat({ label, value, valueClass = "text-t1" }) {
     </div>
   );
 }
+
+Stat.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  valueClass: PropTypes.string,
+};
 
 export default function AgentCard({ agent }) {
   const navigate = useNavigate();
@@ -52,3 +62,15 @@ export default function AgentCard({ agent }) {
     </div>
   );
 }
+
+AgentCard.propTypes = {
+  agent: PropTypes.shape({
+    agent_id: PropTypes.string.isRequired,
+    success_rate: PropTypes.number.isRequired,
+    total_cost: PropTypes.number.isRequired,
+    avg_cost: PropTypes.number.isRequired,
+    total_calls: PropTypes.number.isRequired,
+    failed: PropTypes.number.isRequired,
+    last_seen: PropTypes.string,
+  }).isRequired,
+};

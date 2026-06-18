@@ -1,7 +1,6 @@
 packages:
   - "dashboard"
   - "packages/js"
+  - "packages/integrations/plugin-core"
   - "packages/integrations/langchain-js"
   - "packages/integrations/anthropic-js"
-  - "packages/integrations/openclaw"
-  - "packages/integrations/hermes"

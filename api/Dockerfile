@@ -12,7 +12,11 @@ RUN pip install --no-cache-dir --quiet --upgrade pip \
 COPY . .
 
 # Data directory for SQLite persistence (mounted as a volume)
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data \
+ && adduser --system --no-create-home --uid 1001 appuser \
+ && chown -R appuser /app/data
+
+USER appuser
 
 EXPOSE 8099
 

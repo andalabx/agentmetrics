@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { updateMe, rotateKey } from "../api/auth";
 import { setStoredKey } from "../api/client";
 import Seo from "../components/Seo";

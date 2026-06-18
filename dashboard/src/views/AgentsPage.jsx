@@ -1,30 +1,11 @@
-import React, { useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { getAgents, deleteAgent, getAgentNames, renameAgent } from "../api/agents";
 import Seo from "../components/Seo";
 import AppLayout from "../components/layout/AppLayout";
 import usePolling from "../hooks/usePolling";
 import AgentDetailPanel from "../components/AgentDetailPanel";
-
-function displayName(agentId, namesMap) {
-  if (namesMap[agentId]) return namesMap[agentId];
-  if (agentId === "main") return "OpenClaw (main)";
-  return agentId;
-}
-
-function timeSince(dateStr) {
-  const secs = Math.floor((Date.now() - new Date(dateStr)) / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  return `${Math.floor(secs / 86400)}d ago`;
-}
-
-function healthOf(agent) {
-  if (agent.success_rate >= 95) return "healthy";
-  if (agent.success_rate >= 80) return "degraded";
-  return "critical";
-}
+import { agentDisplayName, timeSince, healthOf } from "../lib/helpers";
 
 const statusConfig = {
   healthy:  { color: "text-savings", bg: "border-savings/25 bg-savings/[0.05]", dot: "bg-savings",  label: "Healthy" },
@@ -55,7 +36,7 @@ function AgentRowSkeleton() {
 }
 
 function AgentRow({ agent, namesMap, onClick, onDelete, onRename }) {
-  const h = healthOf(agent);
+  const h = healthOf(agent.success_rate);
   const cfg = statusConfig[h];
   const [deleting, setDeleting] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -97,7 +78,7 @@ function AgentRow({ agent, namesMap, onClick, onDelete, onRename }) {
     }
   };
 
-  const label = displayName(agent.agent_id, namesMap);
+  const label = agentDisplayName(agent.agent_id, namesMap);
   const hasCustomName = !!namesMap[agent.agent_id];
 
   return (
@@ -318,22 +299,22 @@ export default function AgentsPage() {
         if (statusFilter === "idle") {
           const secs = a.last_seen ? Math.floor((Date.now() - new Date(a.last_seen)) / 1000) : Infinity;
           if (secs <= 3600) return false;
-        } else if (healthOf(a) !== statusFilter) {
+        } else if (healthOf(a.success_rate) !== statusFilter) {
           return false;
         }
       }
       if (!search.trim()) return true;
       return (
         a.agent_id.toLowerCase().includes(search.toLowerCase()) ||
-        displayName(a.agent_id, namesMap).toLowerCase().includes(search.toLowerCase())
+        agentDisplayName(a.agent_id, namesMap).toLowerCase().includes(search.toLowerCase())
       );
     }),
     sortKey,
   );
 
-  const healthy  = agents.filter((a) => healthOf(a) === "healthy").length;
-  const degraded = agents.filter((a) => healthOf(a) === "degraded").length;
-  const critical = agents.filter((a) => healthOf(a) === "critical").length;
+  const healthy  = agents.filter((a) => healthOf(a.success_rate) === "healthy").length;
+  const degraded = agents.filter((a) => healthOf(a.success_rate) === "degraded").length;
+  const critical = agents.filter((a) => healthOf(a.success_rate) === "critical").length;
 
   return (
     <AppLayout>
@@ -373,9 +354,9 @@ export default function AgentsPage() {
               <div className="flex flex-wrap gap-2">
                 {[
                   { id: "all",      label: "All",      count: agents.length,                             cls: "" },
-                  { id: "healthy",  label: "Healthy",  count: agents.filter((a) => healthOf(a) === "healthy").length,  cls: "text-savings border-savings/30 bg-savings/[0.06]" },
-                  { id: "degraded", label: "Degraded", count: agents.filter((a) => healthOf(a) === "degraded").length, cls: "text-cost border-cost/30 bg-cost/[0.06]" },
-                  { id: "critical", label: "Critical", count: agents.filter((a) => healthOf(a) === "critical").length, cls: "text-danger border-danger/30 bg-danger/[0.06]" },
+                  { id: "healthy",  label: "Healthy",  count: agents.filter((a) => healthOf(a.success_rate) === "healthy").length,  cls: "text-savings border-savings/30 bg-savings/[0.06]" },
+                  { id: "degraded", label: "Degraded", count: agents.filter((a) => healthOf(a.success_rate) === "degraded").length, cls: "text-cost border-cost/30 bg-cost/[0.06]" },
+                  { id: "critical", label: "Critical", count: agents.filter((a) => healthOf(a.success_rate) === "critical").length, cls: "text-danger border-danger/30 bg-danger/[0.06]" },
                   { id: "idle",     label: "Idle",     count: idleAgents.length,                         cls: "text-t2 border-[var(--border)]" },
                 ].map((f) => (
                   <button

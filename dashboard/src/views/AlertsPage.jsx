@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { getAlertRules, createAlertRule, updateAlertRule, deleteAlertRule, getAlertHistory } from "../api/alerts";
 import { getMe, updateSettings } from "../api/auth";
 import Seo from "../components/Seo";

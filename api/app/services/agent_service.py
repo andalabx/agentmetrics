@@ -1,9 +1,19 @@
+from __future__ import annotations
+
+import json
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import case, func, or_, text
 from sqlalchemy.orm import Session
 
-from app.db_compat import trunc_day
+from app.database import IS_SQLITE
+from app.db_compat import (
+    epoch_diff_ms,
+    json_extract_text,
+    json_sql_extract,
+    json_sql_not_eq,
+    trunc_day,
+)
 from app.models.event import Event
 from app.schemas.agent import (
     AgentDetail,
@@ -15,21 +25,21 @@ from app.schemas.agent import (
     RecentRun,
 )
 
-# Infrastructure agent IDs that should never appear in the user-facing agents list
 _EXCLUDED_AGENTS = {"openclaw-gateway"}
 
-# Exclude session_metrics events from all run-level queries - they are session-boundary
-# aggregates emitted by the plugin, not individual agent runs. Without this filter they
-# inflate run counts, cost totals, and latency averages.
+# Exclude session_metrics events from run-level queries — they are session-boundary
+# aggregates emitted by the plugin, not individual agent runs.
 _NOT_SESSION_METRICS = or_(
     Event.run_metadata.is_(None),
-    Event.run_metadata["event_name"].astext.is_(None),
-    Event.run_metadata["event_name"].astext != "session_metrics",
+    json_extract_text(Event.run_metadata, "event_name").is_(None),
+    json_extract_text(Event.run_metadata, "event_name") != "session_metrics",
 )
+
+# Raw SQL fragment for the same filter used inside text() queries
+_SM_SQL = json_sql_not_eq("run_metadata", "event_name", "session_metrics")
 
 
 def _retention_since(org_id: str, db: Session) -> datetime:
-    # Self-hosted: no retention limit - return epoch zero so all data is visible
     return datetime.min.replace(tzinfo=UTC)
 
 
@@ -45,7 +55,12 @@ def get_agents_summary(org_id: str, db: Session, limit: int = 200, offset: int =
             func.avg(Event.cost_usd).label("avg_cost"),
             func.max(Event.timestamp).label("last_seen"),
         )
-        .filter(Event.org_id == org_id, ~Event.agent_id.in_(_EXCLUDED_AGENTS), Event.timestamp >= since, _NOT_SESSION_METRICS)
+        .filter(
+            Event.org_id == org_id,
+            ~Event.agent_id.in_(_EXCLUDED_AGENTS),
+            Event.timestamp >= since,
+            _NOT_SESSION_METRICS,
+        )
         .group_by(Event.agent_id)
         .order_by(func.sum(Event.cost_usd).desc())
         .offset(offset)
@@ -70,9 +85,9 @@ def get_agents_summary(org_id: str, db: Session, limit: int = 200, offset: int =
     return results
 
 
-def _event_to_run(e: "Event") -> RecentRun:
+def _event_to_run(e: Event) -> RecentRun:
     meta = e.run_metadata or {}
-    # Prefer promoted columns; fall back to JSONB for events before migration 012
+
     def _int(col_val, meta_key: str):
         if col_val is not None:
             return int(col_val)
@@ -106,12 +121,20 @@ def get_agent_runs(
 ) -> tuple[list[RecentRun], int]:
     since = _retention_since(org_id, db)
     total = db.query(func.count(Event.id)).filter(
-        Event.org_id == org_id, Event.agent_id == agent_id, Event.timestamp >= since, _NOT_SESSION_METRICS
+        Event.org_id == org_id,
+        Event.agent_id == agent_id,
+        Event.timestamp >= since,
+        _NOT_SESSION_METRICS,
     ).scalar() or 0
 
     events = (
         db.query(Event)
-        .filter(Event.org_id == org_id, Event.agent_id == agent_id, Event.timestamp >= since, _NOT_SESSION_METRICS)
+        .filter(
+            Event.org_id == org_id,
+            Event.agent_id == agent_id,
+            Event.timestamp >= since,
+            _NOT_SESSION_METRICS,
+        )
         .order_by(Event.timestamp.desc())
         .limit(limit)
         .offset(offset)
@@ -121,7 +144,29 @@ def get_agent_runs(
 
 
 def _percentiles(db: Session, org_id: str, agent_id: str, since: datetime) -> tuple:
-    """Fetch p50/p95/p99 in a single query instead of three separate round-trips."""
+    """Compute p50/p95/p99 latency percentiles, cross-dialect."""
+    if IS_SQLITE:
+        rows = db.execute(
+            text(
+                "SELECT duration_ms FROM events "
+                "WHERE org_id = :org_id AND agent_id = :agent_id "
+                "AND duration_ms IS NOT NULL AND timestamp >= :since "
+                f"AND {_SM_SQL} "
+                "ORDER BY duration_ms"
+            ),
+            {"org_id": str(org_id), "agent_id": agent_id, "since": since},
+        ).fetchall()
+        vals = sorted(float(r[0]) for r in rows if r[0] is not None)
+        if not vals:
+            return None, None, None
+
+        def _pct(lst: list[float], p: float) -> float:
+            idx = (len(lst) - 1) * p
+            lo, hi = int(idx), min(int(idx) + 1, len(lst) - 1)
+            return round(lst[lo] + (lst[hi] - lst[lo]) * (idx - lo), 2)
+
+        return _pct(vals, 0.50), _pct(vals, 0.95), _pct(vals, 0.99)
+
     row = db.execute(
         text(
             "SELECT "
@@ -130,19 +175,126 @@ def _percentiles(db: Session, org_id: str, agent_id: str, since: datetime) -> tu
             "  percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) "
             "FROM events WHERE org_id = :org_id AND agent_id = :agent_id "
             "AND duration_ms IS NOT NULL AND timestamp >= :since "
-            "AND (run_metadata IS NULL OR run_metadata->>'event_name' IS NULL "
-            "     OR run_metadata->>'event_name' != 'session_metrics')"
+            f"AND {_SM_SQL}"
         ),
         {"org_id": str(org_id), "agent_id": agent_id, "since": since},
     ).fetchone()
+
     def _r(v):
         return round(float(v), 2) if v is not None else None
+
     return (_r(row[0]), _r(row[1]), _r(row[2])) if row else (None, None, None)
+
+
+def _meta_aggregates(db: Session, org_id: str, agent_id: str, since: datetime):
+    """Aggregate promoted + JSONB-fallback columns, cross-dialect."""
+    jx = json_sql_extract  # alias for brevity
+
+    if IS_SQLITE:
+        sql = text(f"""
+            SELECT
+                COALESCE(SUM(COALESCE(llm_calls,         CAST({jx('run_metadata','llm_calls')} AS INTEGER))),         0) AS llm_calls,
+                COALESCE(SUM(COALESCE(subagents_spawned, CAST({jx('run_metadata','subagents_spawned')} AS INTEGER))),  0) AS subagents_spawned,
+                COALESCE(SUM(COALESCE(compactions,       CAST({jx('run_metadata','compactions')} AS INTEGER))),        0) AS compactions,
+                COALESCE(SUM(COALESCE(resets,            CAST({jx('run_metadata','resets')} AS INTEGER))),             0) AS resets,
+                COALESCE(SUM(input_tokens),                                                                             0) AS input_tokens,
+                COALESCE(SUM(output_tokens),                                                                            0) AS output_tokens,
+                COALESCE(SUM(COALESCE(cache_read_tokens,  CAST({jx('run_metadata','cache_read_tokens')} AS INTEGER))), 0) AS cache_read_tokens,
+                COALESCE(SUM(COALESCE(cache_write_tokens, CAST({jx('run_metadata','cache_write_tokens')} AS INTEGER))),0) AS cache_write_tokens,
+                COALESCE(SUM(tool_calls),                                                                               0) AS tool_calls,
+                COALESCE(SUM(COALESCE(tool_errors, CAST({jx('run_metadata','tool_errors')} AS INTEGER))),              0) AS tool_errors
+            FROM events
+            WHERE org_id = :org_id AND agent_id = :agent_id
+              AND timestamp >= :since
+              AND {_SM_SQL}
+        """)
+    else:
+        sql = text(f"""
+            SELECT
+                COALESCE(SUM(COALESCE(llm_calls,         ({jx('run_metadata','llm_calls')})::int)),         0) AS llm_calls,
+                COALESCE(SUM(COALESCE(subagents_spawned, ({jx('run_metadata','subagents_spawned')})::int)),  0) AS subagents_spawned,
+                COALESCE(SUM(COALESCE(compactions,       ({jx('run_metadata','compactions')})::int)),        0) AS compactions,
+                COALESCE(SUM(COALESCE(resets,            ({jx('run_metadata','resets')})::int)),             0) AS resets,
+                COALESCE(SUM(input_tokens::int),                                                              0) AS input_tokens,
+                COALESCE(SUM(output_tokens::int),                                                             0) AS output_tokens,
+                COALESCE(SUM(COALESCE(cache_read_tokens,  ({jx('run_metadata','cache_read_tokens')})::int)), 0) AS cache_read_tokens,
+                COALESCE(SUM(COALESCE(cache_write_tokens, ({jx('run_metadata','cache_write_tokens')})::int)),0) AS cache_write_tokens,
+                COALESCE(SUM(tool_calls),                                                                     0) AS tool_calls,
+                COALESCE(SUM(COALESCE(tool_errors, ({jx('run_metadata','tool_errors')})::int)),              0) AS tool_errors
+            FROM events
+            WHERE org_id = :org_id AND agent_id = :agent_id
+              AND timestamp >= :since
+              AND {_SM_SQL}
+        """)
+    return db.execute(sql, {"org_id": str(org_id), "agent_id": agent_id, "since": since}).fetchone()
+
+
+def _mttr(db: Session, org_id: str, agent_id: str, since: datetime) -> float | None:
+    """Mean time to recovery — cross-dialect."""
+    diff_expr = epoch_diff_ms("timestamp", "prev_ts")
+    sql = text(f"""
+        WITH ordered AS (
+            SELECT status, timestamp,
+                   LAG(status)    OVER (ORDER BY timestamp) AS prev_status,
+                   LAG(timestamp) OVER (ORDER BY timestamp) AS prev_ts
+            FROM events
+            WHERE org_id = :org_id AND agent_id = :agent_id
+              AND timestamp >= :since
+              AND {_SM_SQL}
+        )
+        SELECT AVG({diff_expr})
+        FROM ordered
+        WHERE status = 'success' AND prev_status = 'failed'
+    """)
+    result = db.execute(sql, {"org_id": str(org_id), "agent_id": agent_id, "since": since}).scalar()
+    return round(float(result), 2) if result is not None else None
+
+
+def _top_tools(db: Session, org_id: str, agent_id: str, since: datetime) -> list[str]:
+    """Aggregate tool names from JSON arrays, cross-dialect."""
+    if IS_SQLITE:
+        # SQLite has no array-unnest; fetch JSON blobs and aggregate in Python.
+        rows = db.execute(
+            text(
+                "SELECT run_metadata FROM events "
+                "WHERE org_id = :org_id AND agent_id = :agent_id "
+                f"AND {json_sql_extract('run_metadata','tool_names')} IS NOT NULL "
+                "AND timestamp >= :since"
+            ),
+            {"org_id": str(org_id), "agent_id": agent_id, "since": since},
+        ).fetchall()
+        counts: dict[str, int] = {}
+        for (raw,) in rows:
+            if not raw:
+                continue
+            try:
+                meta = json.loads(raw) if isinstance(raw, str) else raw
+                for name in meta.get("tool_names") or []:
+                    counts[name] = counts.get(name, 0) + 1
+            except (json.JSONDecodeError, TypeError, AttributeError):
+                pass
+        return sorted(counts, key=counts.__getitem__, reverse=True)[:10]
+
+    rows = db.execute(
+        text("""
+            SELECT tool_name, COUNT(*) AS cnt
+            FROM events,
+                 jsonb_array_elements_text(run_metadata->'tool_names') AS tool_name
+            WHERE org_id = :org_id AND agent_id = :agent_id
+              AND run_metadata ? 'tool_names'
+              AND timestamp >= :since
+            GROUP BY tool_name
+            ORDER BY cnt DESC
+            LIMIT 10
+        """),
+        {"org_id": str(org_id), "agent_id": agent_id, "since": since},
+    ).fetchall()
+    return [r[0] for r in rows]
 
 
 def get_agent_detail(org_id: str, agent_id: str, db: Session) -> AgentDetail | None:
     since = _retention_since(org_id, db)
-    # Summary stats
+
     row = (
         db.query(
             func.count(Event.id).label("total_calls"),
@@ -153,7 +305,12 @@ def get_agent_detail(org_id: str, agent_id: str, db: Session) -> AgentDetail | N
             func.avg(Event.duration_ms).label("avg_duration"),
             func.max(Event.timestamp).label("last_seen"),
         )
-        .filter(Event.org_id == org_id, Event.agent_id == agent_id, Event.timestamp >= since, _NOT_SESSION_METRICS)
+        .filter(
+            Event.org_id == org_id,
+            Event.agent_id == agent_id,
+            Event.timestamp >= since,
+            _NOT_SESSION_METRICS,
+        )
         .first()
     )
 
@@ -163,14 +320,12 @@ def get_agent_detail(org_id: str, agent_id: str, db: Session) -> AgentDetail | N
     total = row.total_calls or 0
     successful = row.successful or 0
 
-    # Latency percentiles - single query for all three
     p50, p95, p99 = _percentiles(db, org_id, agent_id, since)
     latency = LatencyPercentiles(
         p50=p50, p95=p95, p99=p99,
         avg=round(float(row.avg_duration), 2) if row.avg_duration else None,
     )
 
-    # Cost by day (last 30 days, capped by plan retention)
     thirty_days_ago = datetime.now(UTC) - timedelta(days=30)
     cost_since = max(since, thirty_days_ago)
     daily_rows = (
@@ -194,7 +349,6 @@ def get_agent_detail(org_id: str, agent_id: str, db: Session) -> AgentDetail | N
         for r in daily_rows
     ]
 
-    # Cost by model
     model_rows = (
         db.query(
             Event.model,
@@ -225,37 +379,22 @@ def get_agent_detail(org_id: str, agent_id: str, db: Session) -> AgentDetail | N
         for r in model_rows
     ]
 
-    # MTTR: avg gap (ms) between a failure and the following success
-    mttr_result = db.execute(
-        text("""
-            WITH ordered AS (
-                SELECT status, timestamp,
-                       LAG(status)    OVER (ORDER BY timestamp) AS prev_status,
-                       LAG(timestamp) OVER (ORDER BY timestamp) AS prev_ts
-                FROM events
-                WHERE org_id = :org_id AND agent_id = :agent_id
-                  AND timestamp >= :since
-                  AND (run_metadata IS NULL OR run_metadata->>'event_name' IS NULL OR run_metadata->>'event_name' != 'session_metrics')
-            )
-            SELECT AVG(EXTRACT(EPOCH FROM (timestamp - prev_ts)) * 1000)
-            FROM ordered
-            WHERE status = 'success' AND prev_status = 'failed'
-        """),
-        {"org_id": str(org_id), "agent_id": agent_id, "since": since},
-    ).scalar()
-    mttr_ms = round(float(mttr_result), 2) if mttr_result is not None else None
+    mttr_ms = _mttr(db, org_id, agent_id, since)
 
-    # Recent runs (last 20)
     recent_events = (
         db.query(Event)
-        .filter(Event.org_id == org_id, Event.agent_id == agent_id, Event.timestamp >= since, _NOT_SESSION_METRICS)
+        .filter(
+            Event.org_id == org_id,
+            Event.agent_id == agent_id,
+            Event.timestamp >= since,
+            _NOT_SESSION_METRICS,
+        )
         .order_by(Event.timestamp.desc())
         .limit(20)
         .all()
     )
     recent_runs = [_event_to_run(e) for e in recent_events]
 
-    # Top errors
     error_rows = (
         db.query(Event.error_message, func.count(Event.id).label("count"))
         .filter(
@@ -273,38 +412,8 @@ def get_agent_detail(org_id: str, agent_id: str, db: Session) -> AgentDetail | N
     )
     top_errors = [ErrorSummary(error_message=r.error_message, count=r.count) for r in error_rows]
 
-    # Aggregate v2 promoted columns + JSONB fallback for pre-migration events
-    meta_row = db.execute(text("""
-        SELECT
-            COALESCE(SUM(COALESCE(llm_calls,         (run_metadata->>'llm_calls')::int)),         0) AS llm_calls,
-            COALESCE(SUM(COALESCE(subagents_spawned, (run_metadata->>'subagents_spawned')::int)),  0) AS subagents_spawned,
-            COALESCE(SUM(COALESCE(compactions,       (run_metadata->>'compactions')::int)),        0) AS compactions,
-            COALESCE(SUM(COALESCE(resets,            (run_metadata->>'resets')::int)),             0) AS resets,
-            COALESCE(SUM(input_tokens::int),                                                       0) AS input_tokens,
-            COALESCE(SUM(output_tokens::int),                                                      0) AS output_tokens,
-            COALESCE(SUM(COALESCE(cache_read_tokens,  (run_metadata->>'cache_read_tokens')::int)), 0) AS cache_read_tokens,
-            COALESCE(SUM(COALESCE(cache_write_tokens, (run_metadata->>'cache_write_tokens')::int)),0) AS cache_write_tokens,
-            COALESCE(SUM(tool_calls),                                                              0) AS tool_calls,
-            COALESCE(SUM(COALESCE(tool_errors,        (run_metadata->>'tool_errors')::int)),       0) AS tool_errors
-        FROM events
-        WHERE org_id = :org_id AND agent_id = :agent_id
-          AND timestamp >= :since
-          AND (run_metadata IS NULL OR run_metadata->>'event_name' IS NULL OR run_metadata->>'event_name' != 'session_metrics')
-    """), {"org_id": str(org_id), "agent_id": agent_id, "since": since}).fetchone()
-
-    # Aggregate top tools from tool_names JSON arrays in run_metadata
-    tool_name_rows = db.execute(text("""
-        SELECT tool_name, COUNT(*) AS cnt
-        FROM events,
-             jsonb_array_elements_text(run_metadata->'tool_names') AS tool_name
-        WHERE org_id = :org_id AND agent_id = :agent_id
-          AND run_metadata ? 'tool_names'
-          AND timestamp >= :since
-        GROUP BY tool_name
-        ORDER BY cnt DESC
-        LIMIT 10
-    """), {"org_id": str(org_id), "agent_id": agent_id, "since": since}).fetchall()
-    top_tools = [r[0] for r in tool_name_rows]
+    meta_row = _meta_aggregates(db, org_id, agent_id, since)
+    top_tools = _top_tools(db, org_id, agent_id, since)
 
     return AgentDetail(
         agent_id=agent_id,

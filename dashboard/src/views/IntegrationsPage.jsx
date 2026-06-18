@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import Seo from "../components/Seo";
 import AppLayout from "../components/layout/AppLayout";
 

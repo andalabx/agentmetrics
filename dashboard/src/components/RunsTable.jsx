@@ -1,5 +1,5 @@
-import React from "react";
 import { Link } from "react-router-dom";
+import { fmtDur, fmtModel, timeSince } from "../lib/helpers";
 
 function StatusPill({ status }) {
   const tone = status === "success"
@@ -12,24 +12,10 @@ function StatusPill({ status }) {
   );
 }
 
-function fmtDur(ms) {
-  if (ms == null) return "-";
-  if (ms < 1000) return `${ms.toFixed(0)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
 function fmtTok(n) {
   if (n == null) return "-";
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
-}
-
-function timeSince(dateStr) {
-  const secs = Math.floor((Date.now() - new Date(dateStr)) / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  return `${Math.floor(secs / 86400)}d ago`;
 }
 
 export default function RunsTable({ runs, onSelectRun, loadingMore, onLoadMore, hasMore, linkState }) {
@@ -75,11 +61,7 @@ export default function RunsTable({ runs, onSelectRun, loadingMore, onLoadMore, 
                   <StatusPill status={run.status} />
                 </td>
                 <td className="px-4 py-3 text-xs text-t2">
-                  {run.model ? (
-                    <span className="font-mono">{run.model.replace("claude-", "").replace("-20", "-'")}</span>
-                  ) : (
-                    <span className="text-t2">-</span>
-                  )}
+                  <span className="font-mono">{fmtModel(run.model)}</span>
                 </td>
                 <td className="px-4 py-3 text-right font-mono text-xs text-t2">
                   {fmtDur(run.duration_ms)}

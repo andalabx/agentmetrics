@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import PropTypes from "prop-types";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import Logo from "../Logo";
 import Sidebar from "./Sidebar";
@@ -122,3 +123,7 @@ export default function AppLayout({ children }) {
     </div>
   );
 }
+
+AppLayout.propTypes = {
+  children: PropTypes.node.isRequired,
+};

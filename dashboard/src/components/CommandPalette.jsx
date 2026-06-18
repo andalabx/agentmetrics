@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 const STATIC_PAGES = [
@@ -31,10 +31,16 @@ function AgentIcon() {
 
 export default function CommandPalette({ agents = [], namesMap = {}, isOpen, onClose }) {
   const navigate = useNavigate();
-  const [query, setQuery]         = useState("");
-  const [activeIdx, setActiveIdx] = useState(0);
+  const [query, setQuery]             = useState("");
+  const [debouncedQuery, setDebounced] = useState("");
+  const [activeIdx, setActiveIdx]      = useState(0);
   const inputRef  = useRef(null);
   const listRef   = useRef(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query), 150);
+    return () => clearTimeout(t);
+  }, [query]);
 
   const agentItems = agents.slice(0, 20).map((a) => ({
     id:   `agent:${a.agent_id}`,
@@ -46,10 +52,10 @@ export default function CommandPalette({ agents = [], namesMap = {}, isOpen, onC
 
   const allItems = [...STATIC_PAGES.map((p) => ({ ...p, type: "page" })), ...agentItems];
 
-  const filtered = query.trim()
+  const filtered = debouncedQuery.trim()
     ? allItems.filter((item) =>
-        item.label.toLowerCase().includes(query.toLowerCase()) ||
-        (item.sub || "").toLowerCase().includes(query.toLowerCase())
+        item.label.toLowerCase().includes(debouncedQuery.toLowerCase()) ||
+        (item.sub || "").toLowerCase().includes(debouncedQuery.toLowerCase())
       )
     : allItems;
 

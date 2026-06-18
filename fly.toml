@@ -9,15 +9,16 @@ primary_region = "iad"
 
 [build]
   dockerfile = "api/Dockerfile"
-  build_target = "api"
 
 [env]
   ENVIRONMENT = "production"
-  AUTH_ENABLED = "false"
 
 [http_service]
   internal_port = 8099
   force_https = true
+  # auto_stop_machines = false keeps at least one machine running so the first
+  # request after idle doesn't hit a cold start. Set to true to save cost if
+  # cold starts are acceptable for your workload.
   auto_stop_machines = false
   auto_start_machines = true
   min_machines_running = 1

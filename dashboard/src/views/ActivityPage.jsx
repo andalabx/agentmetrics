@@ -1,17 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect } from "react";
+import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
 import { getAgents } from "../api/agents";
 import { openActivityStream } from "../api/stream";
 import Seo from "../components/Seo";
 import AppLayout from "../components/layout/AppLayout";
-import usePolling from "../hooks/usePolling";
 
-const POLL_MS = 30_000;
 const MAX_EVENTS = 200;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function timeSince(tsMs) {
   if (!tsMs) return "—";
@@ -42,9 +37,6 @@ function truncate(str, n) {
   return str.length > n ? str.slice(0, n) + "…" : str;
 }
 
-// ---------------------------------------------------------------------------
-// Event type metadata
-// ---------------------------------------------------------------------------
 
 const EVENT_META = {
   run_start:      { label: "run_start",      color: "text-indigo-400",  bg: "bg-indigo-500/10"  },
@@ -65,9 +57,6 @@ function getEventMeta(type) {
   return EVENT_META[type] ?? { label: type, color: "text-t3", bg: "bg-[var(--surface-2)]" };
 }
 
-// ---------------------------------------------------------------------------
-// Data preview for event rows
-// ---------------------------------------------------------------------------
 
 function DataPreview({ type, data }) {
   if (!data) return null;
@@ -119,9 +108,11 @@ function DataPreview({ type, data }) {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
+DataPreview.propTypes = {
+  type: PropTypes.string.isRequired,
+  data: PropTypes.object,
+};
+
 
 function StatCard({ label, value, accent }) {
   return (
@@ -131,6 +122,12 @@ function StatCard({ label, value, accent }) {
     </div>
   );
 }
+
+StatCard.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  accent: PropTypes.bool,
+};
 
 function ConnectionBadge({ status }) {
   if (status === "connected") {
@@ -155,34 +152,44 @@ function ConnectionBadge({ status }) {
   );
 }
 
+ConnectionBadge.propTypes = {
+  status: PropTypes.string.isRequired,
+};
+
 function EventRow({ event, tick }) {
   const meta = getEventMeta(event.type);
   return (
     <div className="flex items-start gap-3 px-4 py-2.5 border-b border-[var(--border)] last:border-0 hover:bg-[var(--surface-2)] transition-colors">
-      {/* Type badge */}
       <span
         className={`shrink-0 mt-0.5 inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium font-mono ${meta.color} ${meta.bg}`}
       >
         {meta.label}
       </span>
 
-      {/* Agent ID */}
       <span className="shrink-0 text-sm text-t2 font-mono min-w-[120px] truncate">
         {truncate(event.agent_id, 20)}
       </span>
 
-      {/* Data preview */}
       <div className="flex-1 min-w-0">
         <DataPreview type={event.type} data={event.data} />
       </div>
 
-      {/* Relative timestamp — re-renders via tick */}
       <span key={tick} className="shrink-0 text-xs text-t3 tabular-nums whitespace-nowrap">
         {timeSince(event.ts)}
       </span>
     </div>
   );
 }
+
+EventRow.propTypes = {
+  event: PropTypes.shape({
+    type: PropTypes.string.isRequired,
+    agent_id: PropTypes.string,
+    data: PropTypes.object,
+    ts: PropTypes.number,
+  }).isRequired,
+  tick: PropTypes.number.isRequired,
+};
 
 function EmptyState() {
   return (
@@ -202,42 +209,24 @@ function EmptyState() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
 
 export default function ActivityPage() {
-  // Stats-bar state (polled)
-  const [agents, setAgents]       = useState([]);
+  const [agents, setAgents]           = useState([]);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [events, setEvents]           = useState([]);
+  const [connStatus, setConnStatus]   = useState("reconnecting");
+  const [tick, setTick]               = useState(0);
 
-  // Live feed state
-  const [events, setEvents]       = useState([]);
-  const [connStatus, setConnStatus] = useState("reconnecting");
-
-  // Tick to force relative-time re-renders
-  const [tick, setTick] = useState(0);
-
-  // -------------------------------------------------------------------------
-  // Poll agents for stats bar (every 30s — low precision is fine here)
-  // -------------------------------------------------------------------------
-  const fetchAgents = useCallback(async () => {
-    try {
-      const res = await getAgents();
-      const list = res.data?.agents ?? res.data ?? [];
-      setAgents(list);
-    } catch {
-      // keep stale data
-    } finally {
-      setStatsLoading(false);
-    }
+  // Single fetch on mount for server-side aggregates (run_count, success_rate, last_run_at).
+  // These are not emitted over the SSE stream; polling was replaced with a one-time load
+  // and SSE-derived incremental counters to avoid continuous HTTP traffic.
+  useEffect(() => {
+    getAgents()
+      .then((res) => setAgents(res.data?.agents ?? res.data ?? []))
+      .catch(() => {})
+      .finally(() => setStatsLoading(false));
   }, []);
 
-  usePolling(fetchAgents, POLL_MS);
-
-  // -------------------------------------------------------------------------
-  // SSE stream
-  // -------------------------------------------------------------------------
   useEffect(() => {
     const stream = openActivityStream(
       (event) => {
@@ -247,7 +236,6 @@ export default function ActivityPage() {
         });
       },
       (err) => {
-        // onError — stream.js handles reconnect internally
         console.warn("[ActivityPage] SSE error", err);
       },
       (status) => {
@@ -258,27 +246,31 @@ export default function ActivityPage() {
     return () => stream.cleanup();
   }, []);
 
-  // -------------------------------------------------------------------------
-  // 1-second tick for relative timestamps
-  // -------------------------------------------------------------------------
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // -------------------------------------------------------------------------
-  // Derived stats
-  // -------------------------------------------------------------------------
-  const recentAgents = agents.filter((a) => {
-    if (!a.last_run_at) return false;
-    return Date.now() - new Date(a.last_run_at).getTime() < 60 * 60 * 1000;
-  });
-
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
+
   const eventsToday = events.filter((e) => e.ts >= todayStart.getTime()).length;
 
-  const totalRuns  = agents.reduce((s, a) => s + (a.run_count ?? 0), 0);
+  // Blend initial snapshot with agents seen in the live SSE stream this hour.
+  const activeLastHour = new Set([
+    ...agents
+      .filter((a) => a.last_run_at && new Date(a.last_run_at).getTime() >= oneHourAgo)
+      .map((a) => a.agent_id ?? a.id),
+    ...events
+      .filter((e) => e.ts >= oneHourAgo && e.agent_id)
+      .map((e) => e.agent_id),
+  ]).size;
+
+  // SSE run_end events add to the initial run count from the server snapshot.
+  const sseRunEnds  = events.filter((e) => e.type === "run_end");
+  const totalRuns   = agents.reduce((s, a) => s + (a.run_count ?? 0), 0) + sseRunEnds.length;
+
   const avgSuccess = agents.length
     ? Math.round(agents.reduce((s, a) => s + (a.success_rate ?? 0), 0) / agents.length)
     : null;
@@ -288,7 +280,6 @@ export default function ActivityPage() {
       <Seo title="Activity — AgentMetrics" />
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
 
-        {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h1 className="text-xl font-semibold text-t1">Activity</h1>
@@ -296,10 +287,9 @@ export default function ActivityPage() {
           </div>
         </div>
 
-        {/* Stats bar */}
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard label="Events today"    value={eventsToday.toLocaleString()} accent />
-          <StatCard label="Active last hour" value={statsLoading ? "—" : recentAgents.length} />
+          <StatCard label="Active last hour" value={statsLoading ? "—" : activeLastHour} />
           <StatCard
             label="Avg success rate"
             value={statsLoading || avgSuccess == null ? "—" : `${avgSuccess}%`}
@@ -310,7 +300,6 @@ export default function ActivityPage() {
           />
         </div>
 
-        {/* Live event feed */}
         <div className="rounded-2xl border border-[var(--border)] bg-surface overflow-hidden">
           <div className="border-b border-[var(--border)] px-4 py-3 flex items-center justify-between">
             <p className="text-sm font-medium text-t1">Live event feed</p>

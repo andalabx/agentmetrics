@@ -103,7 +103,8 @@ def _extract_tokens(response: Any) -> dict:
     return {}
 
 
-# INT-06: module-level root span cache to avoid O(n) walks per span
+# INT-06: bounded root span cache (LRU) — evicts oldest entries beyond MAX_CACHE_SIZE
+_MAX_CACHE_SIZE = 4096
 _root_cache: dict[str, str] = {}
 
 
@@ -119,11 +120,18 @@ def _find_root(span_id: str, spans: dict, _visited: set | None = None) -> str:
     span = spans.get(span_id)
     parent = span.parent_id if span is not None else None
     if not parent or parent not in spans:
-        _root_cache[span_id] = span_id
+        _cache_put(span_id, span_id)
         return span_id
     root = _find_root(parent, spans, _visited)
-    _root_cache[span_id] = root
+    _cache_put(span_id, root)
     return root
+
+
+def _cache_put(key: str, value: str) -> None:
+    if len(_root_cache) >= _MAX_CACHE_SIZE:
+        # Evict the oldest entry (dict preserves insertion order in Python 3.7+)
+        _root_cache.pop(next(iter(_root_cache)))
+    _root_cache[key] = value
 
 
 class AgentMetricsEventHandler(BaseEventHandler):

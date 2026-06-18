@@ -52,6 +52,7 @@ export function openActivityStream(onEvent, onError, onStatus) {
       es?.close();
       es = null;
       onStatus?.("reconnecting");
+      clearTimeout(retryTimer);
       retryTimer = setTimeout(() => {
         retryDelay = Math.min(retryDelay * 2, 30000);
         connect();

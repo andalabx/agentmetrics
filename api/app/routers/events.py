@@ -3,12 +3,11 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
-from sqlalchemy import text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.pricing import get_price
 from app.core.rate_limit import check_rate_limit
-from app.database import IS_SQLITE, get_db
+from app.database import get_db
 from app.deps import get_current_org_from_api_key
 from app.models.event import Event
 from app.models.organization import Organization
@@ -19,11 +18,15 @@ router = APIRouter(prefix="/events", tags=["events"])
 def _build_event(org_id: uuid.UUID, body: EventCreate) -> Event:
     cost = body.cost_usd
     if body.model and body.input_tokens is not None and body.output_tokens is not None:
-        prices = get_price(body.model)
-        if prices is not None:
-            cost = (body.input_tokens * prices["input"] + body.output_tokens * prices["output"]) / 1_000_000
-        else:
-            cost = body.cost_usd  # trust client-provided cost
+        from app.core.pricing import calculate_cost
+        server_cost = calculate_cost(
+            body.model,
+            body.input_tokens,
+            body.output_tokens,
+            body.cache_read_tokens or 0,
+            body.cache_write_tokens or 0,
+        )
+        cost = server_cost if server_cost else body.cost_usd
 
     # Only fields that have no dedicated column go into run_metadata.
     # Fields promoted to columns in migration 012 are excluded to avoid storing them twice.
@@ -40,6 +43,7 @@ def _build_event(org_id: uuid.UUID, body: EventCreate) -> Event:
             "ts":                       body.ts,
             "redaction_policy_version": body.redaction_policy_version,
             "estimated_cost_usd":       body.estimated_cost_usd,
+            "sdk_version":              body.sdk_version,
         }.items() if v is not None
     }
     metadata = {**(body.metadata or {}), **extra}
@@ -70,6 +74,7 @@ def _build_event(org_id: uuid.UUID, body: EventCreate) -> Event:
         subagent_errors=body.subagent_errors,
         compactions=body.compactions,
         resets=body.resets,
+        loop_count=body.loop_count,
     )
 
 def _run_realtime_alerts(org_id: str) -> None:
@@ -93,11 +98,14 @@ def ingest_event(
     check_rate_limit(str(org.id))
 
     existing = db.execute(
-        text("SELECT id FROM events WHERE org_id = :org_id AND trace_id = :trace_id AND agent_id = :agent_id LIMIT 1"),
-        {"org_id": str(org.id), "trace_id": body.trace_id, "agent_id": body.agent_id},
-    ).fetchone()
+        select(Event.id).where(
+            Event.org_id == org.id,
+            Event.trace_id == body.trace_id,
+            Event.agent_id == body.agent_id,
+        ).limit(1)
+    ).scalar_one_or_none()
     if existing:
-        return EventResponse(status="accepted", event_id=str(existing[0]))
+        return EventResponse(status="accepted", event_id=str(existing))
 
     event = _build_event(org.id, body)
     db.add(event)
@@ -125,19 +133,13 @@ def ingest_events_batch(
     incoming_trace_ids = [item.trace_id for item in body.events if item.trace_id]
     existing_trace_ids: set[str] = set()
     if incoming_trace_ids:
-        if IS_SQLITE:
-            placeholders = ",".join(f":id_{i}" for i in range(len(incoming_trace_ids)))
-            id_params = {f"id_{i}": v for i, v in enumerate(incoming_trace_ids)}
-            rows = db.execute(
-                text(f"SELECT trace_id FROM events WHERE org_id = :org_id AND trace_id IN ({placeholders})"),
-                {"org_id": str(org.id), **id_params},
-            ).fetchall()
-        else:
-            rows = db.execute(
-                text("SELECT trace_id FROM events WHERE org_id = :org_id AND trace_id = ANY(:ids)"),
-                {"org_id": str(org.id), "ids": incoming_trace_ids},
-            ).fetchall()
-        existing_trace_ids = {row[0] for row in rows}
+        rows = db.execute(
+            select(Event.trace_id).where(
+                Event.org_id == org.id,
+                Event.trace_id.in_(incoming_trace_ids),
+            )
+        ).scalars().all()
+        existing_trace_ids = set(rows)
 
     accepted = 0
     rejected = 0

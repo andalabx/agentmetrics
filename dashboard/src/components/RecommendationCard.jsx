@@ -1,5 +1,3 @@
-import React from "react";
-
 const ICONS = {
   model_switch: (
     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

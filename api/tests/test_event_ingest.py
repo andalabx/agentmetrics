@@ -3,8 +3,6 @@ Tests for event ingest endpoint — deduplication, validation, rate limiting.
 """
 
 
-# --- Deduplication ---
-
 def test_duplicate_trace_same_agent_is_deduplicated(client, db):
     """Second event with same trace_id + agent_id is silently deduplicated."""
     payload = {
@@ -33,8 +31,6 @@ def test_same_trace_different_agent_is_not_deduplicated(client, db):
     count = db.query(Event).filter_by(trace_id="shared-trace").count()
     assert count == 2
 
-
-# --- Input validation ---
 
 def test_missing_required_fields_returns_422(client):
     r = client.post("/v1/events", json={"agent_id": "a"})  # missing trace_id + status
@@ -75,8 +71,6 @@ def test_error_field_is_truncated_to_max_length(client):
     # Should be accepted but truncated / rejected — whichever the schema enforces
     assert r.status_code in (200, 201, 422)
 
-
-# --- Batch ---
 
 def test_batch_accepts_up_to_100_events(client):
     events = [

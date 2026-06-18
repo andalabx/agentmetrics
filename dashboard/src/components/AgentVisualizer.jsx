@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -191,10 +191,6 @@ export default function AgentVisualizer({ agentId, recentEvents = [], stats = {}
   return (
     <div className="relative w-full h-full flex items-center justify-center select-none">
       <style>{`
-        @keyframes vizPulse {
-          0%   { opacity: 0.6; r: var(--r0); }
-          100% { opacity: 0; r: var(--r1); }
-        }
         @keyframes vizPulse {
           0%   { opacity: 0.7; transform: scale(1); }
           100% { opacity: 0;   transform: scale(1.8); }

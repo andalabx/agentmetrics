@@ -13,7 +13,6 @@ build/
 htmlcov/
 .coverage
 coverage.xml
-uv.lock
 
 # Node / JS
 node_modules/

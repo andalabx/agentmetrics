@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import Logo from "../Logo";
 
@@ -206,7 +206,7 @@ export default function Sidebar({ isMobileOpen = false, onMobileClose = () => {}
                 {group.items.map(({ href, label, icon, alerts, live }) => (
                   <Link
                     key={href}
-                    href={href}
+                    to={href}
                     onClick={onMobileClose}
                     title={isCollapsed ? label : undefined}
                     className={linkCls(href)}

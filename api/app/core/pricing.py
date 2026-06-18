@@ -1,29 +1,33 @@
 import logging
 
 # Update this date whenever model prices are refreshed.
-PRICE_TABLE_UPDATED = "2026-06-16"
+PRICE_TABLE_UPDATED = "2026-06-18"
 
 logger = logging.getLogger(__name__)
 
-# Model pricing -- per 1M tokens (USD)
-# Update monthly to match provider billing
+# Model pricing -- per 1M tokens (USD).
+# Keys: input, output, cache_read (optional), cache_write (optional).
+# Only Claude models currently publish cache token prices.
+# Unmapped models fall back to _fuzzy_lookup; unknown models return None.
 MODEL_PRICES: dict[str, dict[str, float]] = {
-    # -------------------------------------------------------------------------
     # Anthropic
-    # -------------------------------------------------------------------------
-    "claude-opus-4-6":            {"input": 15.00, "output": 75.00},
-    "claude-sonnet-4-6":          {"input": 3.00,  "output": 15.00},
-    "claude-haiku-4-5":           {"input": 0.80,  "output": 4.00},
-    "claude-haiku-4-5-20251001":  {"input": 0.80,  "output": 4.00},
-    "claude-3-5-sonnet-20241022": {"input": 3.00,  "output": 15.00},
-    "claude-3-5-haiku-20241022":  {"input": 0.80,  "output": 4.00},
-    "claude-3-opus-20240229":     {"input": 15.00, "output": 75.00},
-    "claude-3-sonnet-20240229":   {"input": 3.00,  "output": 15.00},
-    "claude-3-haiku-20240307":    {"input": 0.25,  "output": 1.25},
+    "claude-opus-4-7":            {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75},
+    "claude-opus-4-6":            {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75},
+    "claude-opus-4":              {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75},
+    "claude-sonnet-4-6":          {"input": 3.00,  "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
+    "claude-sonnet-4-5":          {"input": 3.00,  "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
+    "claude-sonnet-3-7":          {"input": 3.00,  "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
+    "claude-haiku-4-5":           {"input": 0.80,  "output": 4.00,  "cache_read": 0.08, "cache_write": 1.00},
+    "claude-haiku-4-5-20251001":  {"input": 0.80,  "output": 4.00,  "cache_read": 0.08, "cache_write": 1.00},
+    "claude-3-7-sonnet-20250219": {"input": 3.00,  "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
+    "claude-3-5-sonnet-20241022": {"input": 3.00,  "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
+    "claude-3-5-sonnet-20240620": {"input": 3.00,  "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
+    "claude-3-5-haiku-20241022":  {"input": 0.80,  "output": 4.00,  "cache_read": 0.08, "cache_write": 1.00},
+    "claude-3-opus-20240229":     {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75},
+    "claude-3-sonnet-20240229":   {"input": 3.00,  "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
+    "claude-3-haiku-20240307":    {"input": 0.25,  "output": 1.25,  "cache_read": 0.03, "cache_write": 0.30},
 
-    # -------------------------------------------------------------------------
     # OpenAI
-    # -------------------------------------------------------------------------
     "gpt-4o":                     {"input": 2.50,  "output": 10.00},
     "gpt-4o-mini":                {"input": 0.15,  "output": 0.60},
     "gpt-4o-2024-11-20":          {"input": 2.50,  "output": 10.00},
@@ -45,9 +49,7 @@ MODEL_PRICES: dict[str, dict[str, float]] = {
     "openai-codex/gpt-5.4":       {"input": 75.00, "output": 150.00},
     "openai-codex/gpt-4.1":       {"input": 2.00,  "output": 8.00},
 
-    # -------------------------------------------------------------------------
     # Google Gemini
-    # -------------------------------------------------------------------------
     "gemini-2.0-flash":           {"input": 0.10,  "output": 0.40},
     "gemini-2.0-flash-lite":      {"input": 0.075, "output": 0.30},
     "gemini-2.5-pro":             {"input": 1.25,  "output": 10.00},
@@ -57,16 +59,13 @@ MODEL_PRICES: dict[str, dict[str, float]] = {
     "gemini-1.5-flash-8b":        {"input": 0.0375,"output": 0.15},
     "gemini-1.0-pro":             {"input": 0.50,  "output": 1.50},
 
-    # -------------------------------------------------------------------------
-    # Meta Llama (via inference providers; price per 1M tokens approximate)
-    # -------------------------------------------------------------------------
+    # Meta Llama (via inference providers; approximate)
     "meta-llama/llama-3.3-70b-instruct":  {"input": 0.59,  "output": 0.79},
     "meta-llama/llama-3.1-405b-instruct": {"input": 3.00,  "output": 3.00},
     "meta-llama/llama-3.1-70b-instruct":  {"input": 0.52,  "output": 0.75},
     "meta-llama/llama-3.1-8b-instruct":   {"input": 0.07,  "output": 0.07},
     "meta-llama/llama-3-70b-instruct":    {"input": 0.59,  "output": 0.79},
     "meta-llama/llama-3-8b-instruct":     {"input": 0.07,  "output": 0.07},
-    # Short-form aliases used by Ollama / Together / Groq
     "llama-3.3-70b":              {"input": 0.59,  "output": 0.79},
     "llama-3.1-70b":              {"input": 0.52,  "output": 0.75},
     "llama-3.1-8b":               {"input": 0.07,  "output": 0.07},
@@ -75,9 +74,7 @@ MODEL_PRICES: dict[str, dict[str, float]] = {
     "llama-2-70b":                {"input": 0.70,  "output": 0.90},
     "llama-2-13b":                {"input": 0.20,  "output": 0.20},
 
-    # -------------------------------------------------------------------------
     # Mistral AI
-    # -------------------------------------------------------------------------
     "mistral-large-latest":       {"input": 3.00,  "output": 9.00},
     "mistral-large-2411":         {"input": 2.00,  "output": 6.00},
     "mistral-medium":             {"input": 2.75,  "output": 8.10},
@@ -88,9 +85,7 @@ MODEL_PRICES: dict[str, dict[str, float]] = {
     "codestral-latest":           {"input": 0.20,  "output": 0.60},
     "mistral-nemo":               {"input": 0.15,  "output": 0.15},
 
-    # -------------------------------------------------------------------------
     # Cohere
-    # -------------------------------------------------------------------------
     "command-r-plus":             {"input": 2.50,  "output": 10.00},
     "command-r":                  {"input": 0.15,  "output": 0.60},
     "command-r-plus-08-2024":     {"input": 2.50,  "output": 10.00},
@@ -98,35 +93,27 @@ MODEL_PRICES: dict[str, dict[str, float]] = {
     "command":                    {"input": 1.00,  "output": 2.00},
     "command-light":              {"input": 0.30,  "output": 0.60},
 
-    # -------------------------------------------------------------------------
     # DeepSeek
-    # -------------------------------------------------------------------------
     "deepseek-chat":              {"input": 0.27,  "output": 1.10},
     "deepseek-reasoner":          {"input": 0.55,  "output": 2.19},
     "deepseek-coder":             {"input": 0.27,  "output": 1.10},
 
-    # -------------------------------------------------------------------------
-    # Groq (hosted open models -- price per 1M tokens)
-    # -------------------------------------------------------------------------
+    # Groq (hosted open models)
     "groq/llama-3.3-70b-versatile":    {"input": 0.59, "output": 0.79},
     "groq/llama-3.1-70b-versatile":    {"input": 0.59, "output": 0.79},
     "groq/llama-3.1-8b-instant":       {"input": 0.05, "output": 0.08},
     "groq/mixtral-8x7b-32768":         {"input": 0.24, "output": 0.24},
     "groq/gemma2-9b-it":               {"input": 0.20, "output": 0.20},
 
-    # -------------------------------------------------------------------------
     # Together AI
-    # -------------------------------------------------------------------------
     "together/llama-3.1-405b-instruct": {"input": 3.50, "output": 3.50},
     "together/llama-3.1-70b-instruct":  {"input": 0.88, "output": 0.88},
     "together/mixtral-8x7b-instruct":   {"input": 0.60, "output": 0.60},
 
-    # -------------------------------------------------------------------------
     # AWS Bedrock model IDs
-    # -------------------------------------------------------------------------
-    "anthropic.claude-3-5-sonnet-20241022-v2:0": {"input": 3.00,  "output": 15.00},
-    "anthropic.claude-3-5-haiku-20241022-v1:0":  {"input": 0.80,  "output": 4.00},
-    "anthropic.claude-3-opus-20240229-v1:0":      {"input": 15.00, "output": 75.00},
+    "anthropic.claude-3-5-sonnet-20241022-v2:0": {"input": 3.00,  "output": 15.00, "cache_read": 0.30, "cache_write": 3.75},
+    "anthropic.claude-3-5-haiku-20241022-v1:0":  {"input": 0.80,  "output": 4.00,  "cache_read": 0.08, "cache_write": 1.00},
+    "anthropic.claude-3-opus-20240229-v1:0":      {"input": 15.00, "output": 75.00, "cache_read": 1.50, "cache_write": 18.75},
     "amazon.titan-text-express-v1":               {"input": 0.20,  "output": 0.60},
     "amazon.nova-pro-v1:0":                       {"input": 0.80,  "output": 3.20},
     "amazon.nova-lite-v1:0":                      {"input": 0.06,  "output": 0.24},
@@ -136,16 +123,12 @@ MODEL_PRICES: dict[str, dict[str, float]] = {
     "mistral.mistral-large-2402-v1:0":            {"input": 4.00,  "output": 12.00},
     "mistral.mixtral-8x7b-instruct-v0:1":         {"input": 0.45,  "output": 0.70},
 
-    # -------------------------------------------------------------------------
-    # Azure OpenAI (same prices as OpenAI; keyed on deployment name patterns)
-    # -------------------------------------------------------------------------
+    # Azure OpenAI
     "azure/gpt-4o":               {"input": 2.50,  "output": 10.00},
     "azure/gpt-4o-mini":          {"input": 0.15,  "output": 0.60},
     "azure/gpt-4-turbo":          {"input": 10.00, "output": 30.00},
 
-    # -------------------------------------------------------------------------
-    # Ollama (local -- $0 cost, captured for latency/quality tracking)
-    # -------------------------------------------------------------------------
+    # Ollama (local — $0 cost, captured for latency/quality tracking)
     "ollama/llama3":              {"input": 0.0, "output": 0.0},
     "ollama/llama3.1":            {"input": 0.0, "output": 0.0},
     "ollama/mistral":             {"input": 0.0, "output": 0.0},
@@ -155,18 +138,14 @@ MODEL_PRICES: dict[str, dict[str, float]] = {
     "ollama/gemma2":              {"input": 0.0, "output": 0.0},
 }
 
+
 def _fuzzy_lookup(model: str) -> dict[str, float] | None:
-    """
-    Try progressively looser matches for model strings we don't have exact entries for.
-    Handles provider-prefixed names like "openai-codex/gpt-5.4" or "bedrock/claude-3-sonnet".
-    """
-    # 1. Try stripping a provider prefix (everything before the last "/" or ":")
+    """Try progressively looser matches for model strings not in the exact table."""
     if "/" in model:
         short = model.split("/")[-1]
         if short in MODEL_PRICES:
             return MODEL_PRICES[short]
 
-    # 2. Try a case-insensitive substring match - pick the longest matching key
     lower = model.lower()
     best: tuple[int, dict] | None = None
     for key, price in MODEL_PRICES.items():
@@ -181,7 +160,7 @@ def _fuzzy_lookup(model: str) -> dict[str, float] | None:
 
 
 def get_price(model: str) -> dict[str, float] | None:
-    """Return price dict with 'input' and 'output' per 1M tokens, or None if unknown."""
+    """Return price dict for the model, or None if unknown."""
     prices = MODEL_PRICES.get(model) or _fuzzy_lookup(model)
     if prices is None:
         logger.debug("[pricing] Unknown model %r — cost not estimated", model)
@@ -189,12 +168,23 @@ def get_price(model: str) -> dict[str, float] | None:
     return prices
 
 
-def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    """Calculate USD cost from token counts. Returns 0.0 for unknown models."""
+def calculate_cost(
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+) -> float:
+    """Calculate USD cost including cache tokens. Returns 0.0 for unknown models."""
     prices = get_price(model)
     if prices is None:
         return 0.0
-    return (input_tokens * prices["input"] + output_tokens * prices["output"]) / 1_000_000
+    return (
+        input_tokens       * prices["input"]                      / 1_000_000
+        + output_tokens    * prices["output"]                     / 1_000_000
+        + cache_read_tokens  * prices.get("cache_read",  0.0)    / 1_000_000
+        + cache_write_tokens * prices.get("cache_write", 0.0)    / 1_000_000
+    )
 
 
 def get_all_models() -> list[str]:

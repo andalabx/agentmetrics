@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RTooltip,
@@ -592,18 +592,22 @@ export default function DashboardPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [agentsRes, recsRes, namesRes, monthlyRes, weekRes] = await Promise.all([
+      const [agentsRes, recsRes, namesRes, monthlyRes, weekRes, healthRes, briefingRes] = await Promise.all([
         getAgents(),
         getRecommendations(),
         getAgentNames(),
         getMonthlyStats(),
         getWeekComparison().catch(() => ({ data: null })),
+        getFleetHealth().catch(() => null),
+        getFleetBriefing().catch(() => null),
       ]);
       setAgents(agentsRes.data);
       setRecs(recsRes.data);
       setNamesMap(namesRes.data);
       setMonthly(monthlyRes.data);
-      if (weekRes.data) setWeekCmp(weekRes.data);
+      if (weekRes.data)       setWeekCmp(weekRes.data);
+      if (healthRes?.data)    setHealth(healthRes.data);
+      if (briefingRes?.data)  setBriefing(briefingRes.data);
       setLastUpdated(Date.now());
     } catch (err) {
       if (err.response?.status === 404 || err.response?.status === 401) {
@@ -611,23 +615,11 @@ export default function DashboardPage() {
       }
     } finally {
       setLoading(false);
+      setHLoading(false);
     }
   }, []);
 
-  const fetchHealth = useCallback(async () => {
-    try {
-      const [healthRes, briefingRes] = await Promise.all([
-        getFleetHealth().catch(() => null),
-        getFleetBriefing().catch(() => null),
-      ]);
-      if (healthRes?.data)   setHealth(healthRes.data);
-      if (briefingRes?.data) setBriefing(briefingRes.data);
-    } catch {}
-    finally { setHLoading(false); }
-  }, []);
-
-  usePolling(fetchData,   10_000);
-  usePolling(fetchHealth, 30_000);
+  usePolling(fetchData, 10_000);
 
   const totalRuns   = agents.reduce((s, a) => s + a.total_calls, 0);
   const totalFailed = agents.reduce((s, a) => s + a.failed, 0);

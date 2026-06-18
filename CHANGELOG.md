@@ -2,69 +2,74 @@
 
 All notable changes to AgentMetrics are documented here.
 
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+---
+
+## June 18, 2026 — Audit hardening (all 49 issues resolved)
+
+### Critical
+- Fixed broken Alembic migration chain (002 placeholder restores PostgreSQL first-run)
+- Fixed Anthropic Python/JS double-counting tool_calls on error results
+- Fixed Sidebar navigation using `href` instead of React Router `to` (caused full-page reloads)
+
+### High
+- AuthContext: capped retries at 5 with exponential backoff (was infinite loop)
+- API client 401: replaced hard redirect with `api:unauthorized` custom event (no React state loss)
+- Docker: both API and dashboard containers now run as non-root users
+- Removed test dependencies (pytest, httpx) from production requirements.txt
+- AutoGen: added cache_read_tokens, cache_write_tokens, estimated_cost_usd to payloads
+- Added loop_count field to EventCreate schema and router mapping
+- Fixed self-hosting docs: correct ports (8099/3099), env vars, CLI commands, added backup guide
+
+### Medium
+- Added React ErrorBoundary to App.jsx
+- Extracted shared helper functions (timeSince, fmtMs, fmtDur, agentDisplayName, healthOf, latencyColor) to src/lib/helpers.js — 6 files updated
+- Fixed Seo.jsx hardcoded agentmetrics.dev URLs → window.location.origin
+- Merged duplicate usePolling calls on DashboardPage into one 10s combined fetch
+- LlamaIndex: bounded _root_cache with LRU eviction at 4096 entries
+- LangChain JS: Path 2 (llmOutput fallback) now extracts cache tokens
+- CrewAI: added threading.Lock to protect shared state under concurrent callbacks
+- WAL directory (Hermes/OpenClaw) now created with chmod 0700; security notes added to docs
+- CI: added PostgreSQL test job (api-test-postgres with postgres:16 service)
+- CI: added compose smoke test job (full stack up + health check)
+- Added dashboard nginx healthcheck to docker-compose.yml
+- Mapped sdk_version to run_metadata in events router
+- Removed dead env vars from render.yaml (SECRET_KEY, API_KEY_HMAC_SECRET) and fly.toml (build_target)
+- Changed PostgreSQL default password placeholder in docker-compose.yml
+- Added nginx cache headers for static assets (1-year immutable for JS/CSS, 30-day for images)
+- Removed dead single_tenant config field from api/app/config.py
+
+### Low
+- Deleted dead PasswordInput.jsx component
+- Removed dead PerformanceTab and ReliabilityTab from InsightsPage.jsx
+- Fixed duplicate @keyframes vizPulse in AgentVisualizer.jsx
+- Added 150ms debounce to CommandPalette search
+- Fixed module-scoped _nextId in ToastContext → useRef (safe under HMR)
+- Added role="img" to Logo SVG for accessibility; removed unused React import
+- Created dashboard/postcss.config.js
+- Removed unused React default import from 18 dashboard files (React 18 JSX transform)
+- Fixed brittle model string manipulation in RunsTable.jsx
+- Added VITE_AUTH_ENABLED removal from dashboard Dockerfile
+- Removed duplicate pytest from requirements.txt; requirements-dev.txt is authoritative
 
 ---
 
-## [Unreleased]
+## June 16, 2026
 
-### Added
-- **No-auth open deployment** — server is fully open by default; no API keys, no login, no signup required. Self-hosted instances start immediately with `docker compose up`.
-- **Python CLI** — `agentmetrics dashboard` launches the stack via Docker Compose or falls back to `agentmetrics-server` pip package.
-- **Live view** — `/live` page polls active agents every 5 s and shows real-time status, cost, and run counts with an animated pulse indicator in the sidebar.
-- **Cost view** — `/cost` page (previously `/insights`) with monthly spend, week-over-week comparison, and per-agent cost breakdown.
-- **7-item navigation** — Overview, Agents, Live, Cost, Alerts, Integrations, Account; sidebar rebuilt with semantic groups and keyboard-accessible command palette.
-- **Static SPA bundling** — FastAPI serves the pre-built dashboard from `api/app/static/` when present, enabling single-binary pip deployments.
-- **OpenClaw plugin v0.3.0** — migrated from hook-based to pure plugin architecture; zero code changes required in agent projects.
-- **Hermes plugin** — new integration for the Hermes agent runtime.
-- **AutoGen integration** (`agentmetrics-autogen`) — wraps AutoGen `GroupChat` and `AssistantAgent` runs.
-- **Anthropic Python integration** (`agentmetrics-anthropic`) — session-level tracking for `client.messages.create` calls.
-- **10 framework integrations total**: LangChain, LangChain JS, CrewAI, LlamaIndex, OpenAI Agents, AutoGen, Anthropic, Anthropic JS, OpenClaw, Hermes.
-- **GitHub Actions CI** — lint (ruff), pytest (SQLite), dashboard build, and Docker image build on every push and PR.
-
-### Changed
-- `agentmetrics.configure()` — `api_key` parameter is now optional (defaults to empty string); pass `base_url` to point at your server. SDKs omit the `Authorization` header when no key is provided.
-- All integration code examples and onboarding snippets updated to use `base_url="http://localhost:8099"` instead of `api_key=`.
-- Integrations page (`/connect`) rebuilt — removed SDK key panel, all setup guides now show `base_url` configure step.
-- Dashboard onboarding overlay reduced from 4 steps to 3 (removed API key step).
-- Account page — removed Credentials tab with rotate-key UI.
-- `configure()` in both Python and JS SDKs accepts `base_url` as the primary connection parameter.
-
-### Removed
-- **All authentication** — JWT, bcrypt password hashing, API key generation, `rotate-key` endpoint, `ApiKey` DB model, `api_key_hash` rate-limiting, `AUTH_ENABLED` flag.
-- `python-jose`, `passlib`, `email-validator` removed from API dependencies.
-- `SECRET_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `API_KEY_HMAC_SECRET`, `AUTH_ENABLED` removed from all env files, Docker Compose files, and CI configuration.
-- Login, signup, forgot-password, and reset-password routes and pages.
+- Activity page: live agent monitoring with 5-second polling
+- Setup page for first-run API key configuration
+- Password/JWT auth replaced with API key auth
+- SDK tracker hardened with typed events and retry logic
+- Integration docs added for all 10 frameworks
 
 ---
 
-## [0.1.2] - 2026-05-01
+## June 13, 2026 — Initial release
 
-### Added
-- Python SDK: `agentmetrics.track()` decorator and context manager
-- JS/TS SDK: `agentmetrics.track()` function with full TypeScript types
-- LangChain Python callback handler (`agentmetrics-langchain`)
-- LangChain JS callback handler
-- CrewAI listener (`agentmetrics-crewai`)
-- LlamaIndex callback (`agentmetrics-llamaindex`)
-
-### Fixed
-- Cost estimation for Claude 3.5 Haiku cache token pricing
-- Batch event endpoint idempotency on duplicate trace IDs
-
----
-
-## [0.1.0] - 2026-04-01
-
-### Added
-- Initial release
-- FastAPI backend with SQLite and PostgreSQL support
-- Vite + React dashboard
-- Python SDK v0.1.0
-- JS SDK v0.1.0
-- Basic agent tracking: cost, latency, success rate
-- Alert rules with Slack webhook notifications
-- Fleet health overview
+- FastAPI server with SQLite and PostgreSQL support
+- React dashboard: Overview, Agents, Runs, Cost, Alerts, Integrations
+- Python SDK: agentmetrics.track() decorator and configure()
+- JS/TS SDK
+- 10 integrations: LangChain, LangChain JS, CrewAI, LlamaIndex, OpenAI Agents, AutoGen, Anthropic, Anthropic JS, OpenClaw, Hermes
 - Docker Compose one-command deployment
-- Self-contained auth with JWT and bcrypt (removed in [Unreleased])
-- In-memory sliding-window rate limiter (no Redis required)
+- Alert rules with Slack webhook notifications
+- Python CLI: agentmetrics dashboard

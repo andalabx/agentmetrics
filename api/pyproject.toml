@@ -32,6 +32,9 @@ postgres = ["psycopg2-binary>=2.9.9"]
 [project.scripts]
 agentmetrics-server = "cli:serve"
 
+[tool.uv]
+exclude-newer = "7 days"
+
 [tool.hatch.build.targets.wheel]
 include = [
     "app/**",

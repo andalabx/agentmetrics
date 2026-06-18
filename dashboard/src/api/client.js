@@ -28,6 +28,7 @@ export function clearStoredKey() {
 
 const client = axios.create({
   baseURL: API_URL,
+  timeout: 30_000,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -44,12 +45,10 @@ client.interceptors.response.use(
   (res) => res,
   (err) => {
     const status = err.response?.status;
-    if (status === 401) {
-      // Key is missing or invalid — send user to setup
-      clearStoredKey();
-      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/setup")) {
-        window.location.href = "/setup";
-      }
+    if (status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/setup")) {
+      // Dispatch event so the app can react gracefully (e.g. show a banner)
+      // rather than doing a hard page reload that destroys React state.
+      window.dispatchEvent(new CustomEvent("api:unauthorized"));
     }
     if (status >= 500 && typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("api:error", {

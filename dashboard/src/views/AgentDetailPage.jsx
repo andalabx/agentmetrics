@@ -1,35 +1,14 @@
-import React, { useCallback, useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getAgent, getAgentNames, renameAgent, getAgentRuns, getAgentHourly, getRecommendations } from "../api/agents";
+import { getAgentRuns, getRecommendations } from "../api/agents";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Cell } from "recharts";
 import RunsTable from "../components/RunsTable";
 import RunInspector from "../components/RunInspector";
 import Seo from "../components/Seo";
 import CostChart from "../components/charts/CostChart";
 import AppLayout from "../components/layout/AppLayout";
-import usePolling from "../hooks/usePolling";
-
-function timeSince(dateStr) {
-  const secs = Math.floor((Date.now() - new Date(dateStr)) / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  return `${Math.floor(secs / 86400)}d ago`;
-}
-
-function fmtMs(ms) {
-  if (ms == null) return "N/A";
-  if (ms < 1000) return `${ms.toFixed(0)}ms`;
-  return `${(ms / 1000).toFixed(2)}s`;
-}
-
-function latencyColor(ms) {
-  if (ms == null) return "text-t2";
-  if (ms < 500)  return "text-savings";
-  if (ms < 2000) return "text-accent";
-  if (ms < 5000) return "text-cost";
-  return "text-danger";
-}
+import { useAgentData, useAgentRename } from "../hooks/useAgentData";
+import { timeSince, fmtMs, latencyColor, agentDisplayName } from "../lib/helpers";
 
 function StatCard({ label, value, sub, valueClass = "text-t1", icon }) {
   return (
@@ -104,12 +83,6 @@ function LiveBadge({ lastUpdated }) {
   );
 }
 
-function agentDisplayName(agentId, namesMap) {
-  if (namesMap[agentId]) return namesMap[agentId];
-  if (agentId === "main") return "OpenClaw (main)";
-  return agentId;
-}
-
 const SLA_DEFAULT_MS = 5000;
 
 function SLAWidget({ p95Ms }) {
@@ -179,66 +152,39 @@ export default function AgentDetailPage({ agentId: agentIdProp }) {
   const params = useParams();
   const agentId = agentIdProp || params?.agentId;
   const navigate = useNavigate();
-  const [agent, setAgent] = useState(null);
-  const [namesMap, setNamesMap] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [renaming, setRenaming] = useState(false);
-  const [nameInput, setNameInput] = useState("");
-  const [savingName, setSavingName] = useState(false);
-  const [selectedRun, setSelectedRun] = useState(null);
-  const [extraRuns, setExtraRuns] = useState([]);
-  const [runsTotal, setRunsTotal] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hourlyData, setHourlyData] = useState([]);
+
+  const { agent, namesMap, setNamesMap, hourlyData, loading, error } = useAgentData(agentId, 5_000);
+  const { renaming, nameInput, setNameInput, savingName, startRename, saveRename, cancelRename } =
+    useAgentRename(agentId, namesMap, setNamesMap);
+
+  const [lastUpdated, setLastUpdated]   = useState(null);
+  const [selectedRun, setSelectedRun]   = useState(null);
+  const [extraRuns, setExtraRuns]       = useState([]);
+  const [runsTotal, setRunsTotal]       = useState(0);
+  const [loadingMore, setLoadingMore]   = useState(false);
   const [agentSavings, setAgentSavings] = useState(null);
 
-  const fetchAgent = useCallback(async () => {
-    try {
-      const [agentRes, namesRes, hourlyRes, recsRes] = await Promise.all([
-        getAgent(agentId),
-        getAgentNames(),
-        getAgentHourly(agentId).catch(() => ({ data: [] })),
-        getRecommendations().catch(() => ({ data: [] })),
-      ]);
-      setAgent(agentRes.data);
-      setNamesMap(namesRes.data);
-      setRunsTotal((prev) => prev || agentRes.data?.total_calls || 0);
-      setHourlyData(hourlyRes.data || []);
-      const agentRecs = (recsRes.data || []).filter(
-        (r) => r.agent_id === agentId && r.status !== "dismissed"
-      );
-      const savings = agentRecs.reduce((s, r) => s + (r.estimated_savings_usd || 0), 0);
-      setAgentSavings(agentRecs.length > 0 ? { total: savings, count: agentRecs.length } : null);
-      setError(null);
-      setLastUpdated(new Date());
-    } catch (err) {
-      setError(
-        err.response?.status === 404
-          ? "Agent not found"
-          : "Failed to load agent data"
-      );
-    } finally {
-      setLoading(false);
-    }
+  // Page-specific extras: recommendations and last-updated timestamp
+  useEffect(() => {
+    if (!agentId) return;
+    getRecommendations()
+      .then((res) => {
+        const recs = (res.data || []).filter(
+          (r) => r.agent_id === agentId && r.status !== "dismissed"
+        );
+        const savings = recs.reduce((s, r) => s + (r.estimated_savings_usd || 0), 0);
+        setAgentSavings(recs.length > 0 ? { total: savings, count: recs.length } : null);
+      })
+      .catch(() => {});
   }, [agentId]);
 
-  const handleStartRename = () => {
-    setNameInput(namesMap[agentId] || "");
-    setRenaming(true);
-  };
+  useEffect(() => {
+    if (agent) setLastUpdated(new Date());
+  }, [agent]);
 
-  const handleSaveRename = async () => {
-    setSavingName(true);
-    try {
-      const { data } = await renameAgent(agentId, nameInput);
-      setNamesMap(data);
-      setRenaming(false);
-    } finally {
-      setSavingName(false);
-    }
-  };
+  useEffect(() => {
+    if (agent) setRunsTotal((prev) => prev || agent.total_calls || 0);
+  }, [agent]);
 
   const handleLoadMore = async () => {
     setLoadingMore(true);
@@ -251,9 +197,6 @@ export default function AgentDetailPage({ agentId: agentIdProp }) {
     } catch {}
     finally { setLoadingMore(false); }
   };
-
-  // 5-second live polling on detail page
-  usePolling(fetchAgent, 5_000);
 
   const lat = agent?.latency ?? {};
   const maxLatMs = Math.max(lat.p99 ?? 0, lat.avg ?? 0, 1);
@@ -290,7 +233,7 @@ export default function AgentDetailPage({ agentId: agentIdProp }) {
                   {agentDisplayName(agentId, namesMap)}
                 </h1>
                 <button
-                  onClick={handleStartRename}
+                  onClick={startRename}
                   className="mt-1 rounded-xl border border-[var(--border)] p-1.5 text-t2 transition-colors hover:border-accent/40 hover:text-accent"
                   title="Rename agent"
                 >
@@ -309,33 +252,26 @@ export default function AgentDetailPage({ agentId: agentIdProp }) {
                     type="text"
                     value={nameInput}
                     onChange={(e) => setNameInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") handleSaveRename(); if (e.key === "Escape") setRenaming(false); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") cancelRename(); }}
                     placeholder="Display name..."
                     className="w-56 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-t1 placeholder:text-t2 focus:border-accent/50 focus:outline-none focus:ring-1 focus:ring-accent/50"
                   />
                   <button
-                    onClick={handleSaveRename}
+                    onClick={() => saveRename()}
                     disabled={savingName}
                     className="rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-accent-txt transition-opacity hover:opacity-90 disabled:opacity-50"
                   >
                     {savingName ? "Saving..." : "Save"}
                   </button>
                   <button
-                    onClick={() => setRenaming(false)}
+                    onClick={cancelRename}
                     className="rounded-xl border border-[var(--border)] px-4 py-2 text-xs font-medium text-t2 transition-colors hover:text-t1"
                   >
                     Cancel
                   </button>
                   {namesMap[agentId] && (
                     <button
-                      onClick={async () => {
-                        setSavingName(true);
-                        try {
-                          const { data } = await renameAgent(agentId, "");
-                          setNamesMap(data);
-                          setRenaming(false);
-                        } finally { setSavingName(false); }
-                      }}
+                      onClick={() => saveRename("")}
                       className="text-xs text-t2 underline transition-colors hover:text-danger"
                     >
                       Reset to default

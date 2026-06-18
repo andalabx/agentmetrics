@@ -225,8 +225,10 @@ export class AgentMetricsCallback extends BaseCallbackHandler {
     // Path 2: llm_output dict (older/non-chat)
     const lo    = (output.llmOutput ?? {}) as Record<string, any>;
     const usage = (lo["token_usage"] ?? lo["usage"] ?? {}) as Record<string, number>;
-    run.inputTokens  += usage["prompt_tokens"]     ?? 0;
-    run.outputTokens += usage["completion_tokens"] ?? 0;
+    run.inputTokens       += usage["prompt_tokens"]              ?? 0;
+    run.outputTokens      += usage["completion_tokens"]          ?? 0;
+    run.cacheReadTokens   += usage["cache_read_input_tokens"]    ?? 0;
+    run.cacheWriteTokens  += usage["cache_creation_input_tokens"] ?? 0;
     if (!run.model) {
       run.model = lo["model_name"] ?? lo["model"] ?? null;
     }

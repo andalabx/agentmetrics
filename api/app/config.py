@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     APP_URL: str = "http://localhost:3099"
     API_URL: str = "http://localhost:8099"
     bind_host: str = "127.0.0.1"
-    single_tenant: bool = True
 
     class Config:
         env_file = (".env.local", ".env")

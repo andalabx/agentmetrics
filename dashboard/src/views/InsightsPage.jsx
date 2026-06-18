@@ -1,23 +1,15 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Cell,
   ResponsiveContainer, Tooltip as RTooltip,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis,
   AreaChart, Area,
 } from "recharts";
 import { getAgents, getAgentNames, getRecommendations, updateRecommendation, getDailyCost } from "../api/agents";
 import Seo from "../components/Seo";
 import AppLayout from "../components/layout/AppLayout";
 import usePolling from "../hooks/usePolling";
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-
-function agentDisplayName(id, map) {
-  if (map && map[id]) return map[id];
-  if (id === "main") return "OpenClaw (main)";
-  return id;
-}
+import { agentDisplayName } from "../lib/helpers";
 
 function shortName(name) {
   return name.length > 12 ? name.slice(0, 11) + "…" : name;
@@ -83,85 +75,6 @@ function RankRow({ rank, name, primary, primaryClass, secondary, secondaryLabel,
         {secondary && <p className="text-[10px] text-t2">{secondaryLabel}: {secondary}</p>}
       </div>
     </button>
-  );
-}
-
-// ─── Performance tab ──────────────────────────────────────────────────────────
-
-function PerformanceTab({ agents, namesMap, onAgent }) {
-  const sorted = [...agents].sort((a, b) => b.success_rate - a.success_rate);
-  const avgRate = agents.length > 0 ? agents.reduce((s, a) => s + a.success_rate, 0) / agents.length : 0;
-
-  const chartData = sorted.map((a, i) => ({
-    name:     shortName(agentDisplayName(a.agent_id, namesMap)),
-    fullName: agentDisplayName(a.agent_id, namesMap),
-    id:       a.agent_id,
-    rate:     parseFloat(a.success_rate.toFixed(2)),
-    fill:     a.success_rate >= 95 ? "#10B981" : a.success_rate >= 80 ? "#F59E0B" : "#EF4444",
-  }));
-
-  const statusBadge = (rate) => {
-    if (rate >= 99) return { label: "Excellent", cls: "bg-savings/10 text-savings" };
-    if (rate >= 95) return { label: "Good",      cls: "bg-accent/10 text-accent" };
-    if (rate >= 80) return { label: "Degraded",  cls: "bg-cost/10 text-cost" };
-    return              { label: "Critical",   cls: "bg-danger/10 text-danger" };
-  };
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat label="Avg success rate" value={`${avgRate.toFixed(1)}%`} sub={`Across ${agents.length} agents`}
-          valueClass={avgRate >= 95 ? "text-savings" : avgRate >= 80 ? "text-cost" : "text-danger"} delay={0} />
-        <Stat label="Best performer" value={sorted[0] ? agentDisplayName(sorted[0].agent_id, namesMap) : "N/A"}
-          sub={sorted[0] ? `${sorted[0].success_rate.toFixed(1)}% success` : ""} valueClass="text-savings" delay={60} />
-        <Stat
-          label="Needs attention"
-          value={sorted[sorted.length - 1]?.success_rate < 95 ? agentDisplayName(sorted[sorted.length - 1].agent_id, namesMap) : "All healthy"}
-          sub={sorted[sorted.length - 1]?.success_rate < 95 ? `${sorted[sorted.length - 1].success_rate.toFixed(1)}% success` : ""}
-          valueClass={sorted[sorted.length - 1]?.success_rate < 95 ? "text-danger" : "text-savings"}
-          delay={120}
-        />
-      </div>
-
-      <div className="fade-in-up delay-200 rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-t2 mb-5">Success rate by agent</p>
-        <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 42)}>
-          <BarChart data={chartData} layout="vertical" barCategoryGap="28%" margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
-            <CartesianGrid horizontal={false} strokeDasharray="3 3" stroke="var(--border)" />
-            <XAxis type="number" domain={[0, 100]} tick={{ fill: "var(--text-3)", fontSize: 10 }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} />
-            <YAxis dataKey="name" type="category" width={90} tick={{ fill: "var(--text-2)", fontSize: 10 }} tickLine={false} axisLine={false} />
-            <RTooltip content={<ChartTooltip formatter={(v) => `${v}% success rate`} />} cursor={{ fill: "var(--surface-2)" }} />
-            <Bar dataKey="rate" radius={[0, 6, 6, 0]} onClick={(d) => onAgent(d.id)} cursor="pointer">
-              {chartData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="fade-in-up delay-300 rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-t2 mb-4">Leaderboard</p>
-        <div className="flex flex-col gap-2">
-          {sorted.map((a, i) => {
-            const b = statusBadge(a.success_rate);
-            return (
-              <RankRow
-                key={a.agent_id}
-                rank={i + 1}
-                name={agentDisplayName(a.agent_id, namesMap)}
-                primary={`${a.success_rate.toFixed(1)}%`}
-                primaryClass={a.success_rate >= 95 ? "text-savings" : a.success_rate >= 80 ? "text-cost" : "text-danger"}
-                secondary={a.total_calls.toLocaleString()}
-                secondaryLabel="runs"
-                badge={b.label}
-                badgeClass={b.cls}
-                onClick={() => onAgent(a.agent_id)}
-                delay={i * 30}
-              />
-            );
-          })}
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -286,86 +199,6 @@ function CostTab({ agents, namesMap, onAgent }) {
               delay={i * 30}
             />
           ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Reliability tab ──────────────────────────────────────────────────────────
-
-function ReliabilityTab({ agents, namesMap, onAgent }) {
-  const sorted = [...agents].sort((a, b) => b.success_rate - a.success_rate);
-
-  const statusOf = (rate) => {
-    if (rate >= 99) return { label: "Excellent", color: "text-savings", bg: "border-savings/25 bg-savings/[0.05]" };
-    if (rate >= 95) return { label: "Good",      color: "text-accent",  bg: "border-accent/25 bg-[var(--accent-bg)]" };
-    if (rate >= 80) return { label: "Degraded",  color: "text-cost",    bg: "border-cost/25 bg-cost/[0.05]" };
-    return              { label: "Critical",   color: "text-danger",  bg: "border-danger/25 bg-danger/[0.05]" };
-  };
-
-  const radarData = sorted.slice(0, 6).map((a) => ({
-    agent:   shortName(agentDisplayName(a.agent_id, namesMap)),
-    Uptime:  parseFloat(a.success_rate.toFixed(1)),
-    Volume:  Math.min(100, Math.round((a.total_calls / Math.max(...agents.map((x) => x.total_calls))) * 100)),
-    Quality: parseFloat((100 - (a.failed / Math.max(a.total_calls, 1)) * 100).toFixed(1)),
-  }));
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="grid gap-4 sm:grid-cols-4">
-        <Stat label="Excellent ≥99%" value={agents.filter((a) => a.success_rate >= 99).length} sub="agents" valueClass="text-savings" delay={0} />
-        <Stat label="Good ≥95%" value={agents.filter((a) => a.success_rate >= 95 && a.success_rate < 99).length} sub="agents" valueClass="text-accent" delay={60} />
-        <Stat label="Degraded 80–94%" value={agents.filter((a) => a.success_rate >= 80 && a.success_rate < 95).length} sub="agents" valueClass="text-cost" delay={120} />
-        <Stat label="Critical <80%" value={agents.filter((a) => a.success_rate < 80).length} sub="agents" valueClass="text-danger" delay={180} />
-      </div>
-
-      {radarData.length >= 3 && (
-        <div className="fade-in-up delay-200 rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card">
-          <p className="text-[10px] uppercase tracking-[0.2em] text-t2 mb-1">Multi-dimension comparison</p>
-          <p className="text-xs text-t2 mb-5">Top agents: uptime, volume, and quality scores</p>
-          <div className="flex justify-center">
-            <ResponsiveContainer width="100%" height={280}>
-              <RadarChart data={radarData} margin={{ top: 8, right: 30, bottom: 8, left: 30 }}>
-                <PolarGrid stroke="var(--border)" />
-                <PolarAngleAxis dataKey="agent" tick={{ fill: "var(--text-2)", fontSize: 11 }} />
-                {["Uptime", "Volume", "Quality"].map((key, i) => (
-                  <Radar key={key} name={key} dataKey={key} stroke={PALETTE[i]} fill={PALETTE[i]} fillOpacity={0.12} strokeWidth={2} />
-                ))}
-              </RadarChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="flex items-center justify-center gap-6 mt-3">
-            {["Uptime", "Volume", "Quality"].map((k, i) => (
-              <div key={k} className="flex items-center gap-1.5 text-xs text-t2">
-                <div className="h-2.5 w-2.5 rounded-full" style={{ background: PALETTE[i] }} />
-                {k}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="fade-in-up delay-300 rounded-[28px] border border-[var(--border)] bg-surface p-6 shadow-card">
-        <p className="text-[10px] uppercase tracking-[0.2em] text-t2 mb-5">Agent reliability status</p>
-        <div className="flex flex-col gap-3">
-          {sorted.map((a, i) => {
-            const s = statusOf(a.success_rate);
-            return (
-              <button
-                key={a.agent_id}
-                onClick={() => onAgent(a.agent_id)}
-                className={`fade-in-up flex items-center justify-between gap-4 rounded-2xl border px-5 py-3.5 text-left transition-all duration-150 hover:opacity-80 hover:-translate-y-px ${s.bg}`}
-                style={{ animationDelay: `${i * 30}ms` }}
-              >
-                <span className="text-sm font-medium text-t1 truncate">{agentDisplayName(a.agent_id, namesMap)}</span>
-                <div className="flex items-center gap-4 shrink-0">
-                  <span className={`font-mono text-sm font-bold tabular-nums ${s.color}`}>{a.success_rate.toFixed(1)}%</span>
-                  <span className={`text-[10px] font-bold uppercase tracking-[0.14em] ${s.color}`}>{s.label}</span>
-                </div>
-              </button>
-            );
-          })}
         </div>
       </div>
     </div>

@@ -90,7 +90,6 @@ def _process_event(state: _SessionState, event: Any) -> bool:
         content = getattr(event, "content", None)
         is_error = getattr(content, "is_error", False) if content else False
         if is_error:
-            state.tool_calls  += 1
             state.tool_errors += 1
 
     # Session error

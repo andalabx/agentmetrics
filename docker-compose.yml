@@ -37,15 +37,22 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3099/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # PostgreSQL (optional) - enable with: docker compose --profile postgres up
   # Set DATABASE_URL=postgresql://agentmetrics:${POSTGRES_PASSWORD}@postgres:5432/agentmetrics
+  # POSTGRES_PASSWORD must be set in .env — do not use the default in production.
   postgres:
     image: postgres:16-alpine
     profiles: [postgres]
     environment:
       POSTGRES_USER: agentmetrics
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-agentmetrics}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_dotenv}
       POSTGRES_DB: agentmetrics
     ports:
       - "127.0.0.1:5432:5432"  # bind to loopback only (SEC-K02)

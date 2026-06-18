@@ -1,5 +1,3 @@
-import React from "react";
-
 export default function Logo({ markSize = 32, showWordmark = false, wordmarkColor, mono = false, className = "" }) {
   const wordColor = mono ? "var(--text-1)" : (wordmarkColor || "var(--text-1)");
   const accentColor = mono ? "var(--text-1)" : (wordmarkColor || null);
@@ -11,6 +9,7 @@ export default function Logo({ markSize = 32, showWordmark = false, wordmarkColo
         height={markSize}
         viewBox="0 0 24 24"
         fill="none"
+        role="img"
         aria-label="AgentMetrics"
         className="text-accent"
       >
