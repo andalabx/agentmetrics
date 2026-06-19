@@ -15,7 +15,8 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Allow nginx user to write pid and cache files without root
-RUN touch /var/run/nginx.pid \
+RUN apk add --no-cache curl \
+ && touch /var/run/nginx.pid \
  && chown -R nginx:nginx /var/run/nginx.pid /var/cache/nginx /var/log/nginx /usr/share/nginx/html
 
 USER nginx
