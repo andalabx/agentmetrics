@@ -35,8 +35,18 @@ _NOT_SESSION_METRICS = or_(
     json_extract_text(Event.run_metadata, "event_name") != "session_metrics",
 )
 
-# Raw SQL fragment for the same filter used inside text() queries
-_SM_SQL = json_sql_not_eq("run_metadata", "event_name", "session_metrics")
+def _use_sqlite(db: Session) -> bool:
+    """Detect the actual dialect of the current session at runtime."""
+    if IS_SQLITE:
+        return True
+    try:
+        return db.connection().dialect.name == "sqlite"
+    except Exception:
+        return False
+
+
+def _sm_sql(is_sqlite: bool) -> str:
+    return json_sql_not_eq("run_metadata", "event_name", "session_metrics", is_sqlite=is_sqlite)
 
 
 def _retention_since(org_id: str, db: Session) -> datetime:
@@ -145,13 +155,15 @@ def get_agent_runs(
 
 def _percentiles(db: Session, org_id: str, agent_id: str, since: datetime) -> tuple:
     """Compute p50/p95/p99 latency percentiles, cross-dialect."""
-    if IS_SQLITE:
+    is_sqlite = _use_sqlite(db)
+    sm = _sm_sql(is_sqlite)
+    if is_sqlite:
         rows = db.execute(
             text(
                 "SELECT duration_ms FROM events "
                 "WHERE org_id = :org_id AND agent_id = :agent_id "
                 "AND duration_ms IS NOT NULL AND timestamp >= :since "
-                f"AND {_SM_SQL} "
+                f"AND {sm} "
                 "ORDER BY duration_ms"
             ),
             {"org_id": str(org_id), "agent_id": agent_id, "since": since},
@@ -175,7 +187,7 @@ def _percentiles(db: Session, org_id: str, agent_id: str, since: datetime) -> tu
             "  percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) "
             "FROM events WHERE org_id = :org_id AND agent_id = :agent_id "
             "AND duration_ms IS NOT NULL AND timestamp >= :since "
-            f"AND {_SM_SQL}"
+            f"AND {sm}"
         ),
         {"org_id": str(org_id), "agent_id": agent_id, "since": since},
     ).fetchone()
@@ -188,9 +200,13 @@ def _percentiles(db: Session, org_id: str, agent_id: str, since: datetime) -> tu
 
 def _meta_aggregates(db: Session, org_id: str, agent_id: str, since: datetime):
     """Aggregate promoted + JSONB-fallback columns, cross-dialect."""
-    jx = json_sql_extract  # alias for brevity
+    is_sqlite = _use_sqlite(db)
+    sm = _sm_sql(is_sqlite)
 
-    if IS_SQLITE:
+    def jx(col, key):
+        return json_sql_extract(col, key, is_sqlite=is_sqlite)
+
+    if is_sqlite:
         sql = text(f"""
             SELECT
                 COALESCE(SUM(COALESCE(llm_calls,         CAST({jx('run_metadata','llm_calls')} AS INTEGER))),         0) AS llm_calls,
@@ -206,7 +222,7 @@ def _meta_aggregates(db: Session, org_id: str, agent_id: str, since: datetime):
             FROM events
             WHERE org_id = :org_id AND agent_id = :agent_id
               AND timestamp >= :since
-              AND {_SM_SQL}
+              AND {sm}
         """)
     else:
         sql = text(f"""
@@ -224,14 +240,16 @@ def _meta_aggregates(db: Session, org_id: str, agent_id: str, since: datetime):
             FROM events
             WHERE org_id = :org_id AND agent_id = :agent_id
               AND timestamp >= :since
-              AND {_SM_SQL}
+              AND {sm}
         """)
     return db.execute(sql, {"org_id": str(org_id), "agent_id": agent_id, "since": since}).fetchone()
 
 
 def _mttr(db: Session, org_id: str, agent_id: str, since: datetime) -> float | None:
     """Mean time to recovery — cross-dialect."""
-    diff_expr = epoch_diff_ms("timestamp", "prev_ts")
+    is_sqlite = _use_sqlite(db)
+    sm = _sm_sql(is_sqlite)
+    diff_expr = epoch_diff_ms("timestamp", "prev_ts", is_sqlite=is_sqlite)
     sql = text(f"""
         WITH ordered AS (
             SELECT status, timestamp,
@@ -240,7 +258,7 @@ def _mttr(db: Session, org_id: str, agent_id: str, since: datetime) -> float | N
             FROM events
             WHERE org_id = :org_id AND agent_id = :agent_id
               AND timestamp >= :since
-              AND {_SM_SQL}
+              AND {sm}
         )
         SELECT AVG({diff_expr})
         FROM ordered
@@ -252,13 +270,14 @@ def _mttr(db: Session, org_id: str, agent_id: str, since: datetime) -> float | N
 
 def _top_tools(db: Session, org_id: str, agent_id: str, since: datetime) -> list[str]:
     """Aggregate tool names from JSON arrays, cross-dialect."""
-    if IS_SQLITE:
+    is_sqlite = _use_sqlite(db)
+    if is_sqlite:
         # SQLite has no array-unnest; fetch JSON blobs and aggregate in Python.
         rows = db.execute(
             text(
                 "SELECT run_metadata FROM events "
                 "WHERE org_id = :org_id AND agent_id = :agent_id "
-                f"AND {json_sql_extract('run_metadata','tool_names')} IS NOT NULL "
+                f"AND {json_sql_extract('run_metadata','tool_names', is_sqlite=True)} IS NOT NULL "
                 "AND timestamp >= :since"
             ),
             {"org_id": str(org_id), "agent_id": agent_id, "since": since},
@@ -294,6 +313,7 @@ def _top_tools(db: Session, org_id: str, agent_id: str, since: datetime) -> list
 
 def get_agent_detail(org_id: str, agent_id: str, db: Session) -> AgentDetail | None:
     since = _retention_since(org_id, db)
+    is_sqlite = _use_sqlite(db)
 
     row = (
         db.query(
@@ -330,7 +350,7 @@ def get_agent_detail(org_id: str, agent_id: str, db: Session) -> AgentDetail | N
     cost_since = max(since, thirty_days_ago)
     daily_rows = (
         db.query(
-            trunc_day(Event.timestamp).label("day"),
+            trunc_day(Event.timestamp, is_sqlite=is_sqlite).label("day"),
             func.sum(Event.cost_usd).label("cost"),
             func.count(Event.id).label("calls"),
         )
@@ -340,7 +360,7 @@ def get_agent_detail(org_id: str, agent_id: str, db: Session) -> AgentDetail | N
             Event.timestamp >= cost_since,
             _NOT_SESSION_METRICS,
         )
-        .group_by(trunc_day(Event.timestamp))
+        .group_by(trunc_day(Event.timestamp, is_sqlite=is_sqlite))
         .order_by(text("day"))
         .all()
     )
