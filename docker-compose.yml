@@ -38,7 +38,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3099/ >/dev/null 2>&1 || exit 1"]
+      test: ["CMD-SHELL", "nc -z localhost 3099 || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3
