@@ -16,6 +16,23 @@
     "ai-agents",
     "monitoring"
   ],
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
   "peerDependencies": {
     "openclaw": ">=2026.3.2"
   },
@@ -24,16 +41,10 @@
       "optional": true
     }
   },
-  "openclaw": {
-    "extensions": [
-      "./index.ts"
-    ]
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
   },
-  "files": [
-    "index.ts",
-    "openclaw.plugin.json",
-    "README.md"
-  ],
   "engines": {
     "node": ">=22"
   }

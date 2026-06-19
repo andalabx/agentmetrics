@@ -1,3 +1,6 @@
+# Generated — dashboard SPA copied here during server build
+api/app/static/
+
 # Python
 __pycache__/
 *.py[cod]

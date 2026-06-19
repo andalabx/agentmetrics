@@ -14,5 +14,5 @@
     "newLine": "lf",
     "skipLibCheck": true
   },
-  "include": ["*.ts"]
+  "include": ["index.ts", "../_shared/core.ts"]
 }

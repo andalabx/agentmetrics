@@ -16,6 +16,23 @@
     "ai-agents",
     "monitoring"
   ],
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "hermes": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "files": [
+    "dist",
+    "hermes.plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
   "peerDependencies": {
     "hermes": ">=2026.1.0"
   },
@@ -24,16 +41,10 @@
       "optional": true
     }
   },
-  "hermes": {
-    "extensions": [
-      "./index.ts"
-    ]
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0"
   },
-  "files": [
-    "index.ts",
-    "hermes.plugin.json",
-    "README.md"
-  ],
   "engines": {
     "node": ">=22"
   }
