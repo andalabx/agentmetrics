@@ -53,7 +53,10 @@ export class HttpClient {
   }
 
   private _track(p: Promise<void>): void {
-    const tracked = p.catch(() => {});
+    const tracked = p.catch((err) => {
+      // eslint-disable-next-line no-console -- safety net: _post handles its own errors, but log anything unexpected that slips through
+      console.warn(`[agentmetrics] unexpected delivery error: ${err instanceof Error ? err.message : String(err)}`);
+    });
     this.pending.push(tracked);
     void tracked.finally(() => {
       this.pending = this.pending.filter((x) => x !== tracked);

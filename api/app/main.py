@@ -206,14 +206,31 @@ def _provision_default_org() -> None:
 
 
 def _print_key_banner(raw_key: str) -> None:
+    import pathlib
+
     sep = "=" * 60
+    key_file: pathlib.Path | None = None
+    try:
+        key_file = pathlib.Path.home() / ".config" / "agentmetrics" / "initial_api_key"
+        key_file.parent.mkdir(parents=True, exist_ok=True)
+        key_file.write_text(raw_key + "\n")
+        try:
+            key_file.chmod(0o600)
+        except OSError:
+            pass  # best-effort; write succeeded, permissions may vary on some systems
+    except OSError:
+        key_file = None
+
     print(f"\n{sep}", file=sys.stderr, flush=True)
     print("  AgentMetrics is ready", file=sys.stderr, flush=True)
     print(f"  Dashboard : {settings.FRONTEND_URL}", file=sys.stderr, flush=True)
     print(f"  API docs  : {settings.API_URL}/docs", file=sys.stderr, flush=True)
     print("", file=sys.stderr, flush=True)
     print(f"  API Key   : {raw_key}", file=sys.stderr, flush=True)
-    print("  ^ Save this key — it is shown only once.", file=sys.stderr, flush=True)
+    if key_file:
+        print(f"  Key saved : {key_file}", file=sys.stderr, flush=True)
+    else:
+        print("  ^ Save this key — it is shown only once.", file=sys.stderr, flush=True)
     print(f"{sep}\n", file=sys.stderr, flush=True)
 
 
