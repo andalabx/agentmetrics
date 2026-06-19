@@ -21,9 +21,9 @@ def get_recommendations(
     org: Organization = Depends(get_current_org_from_jwt),
     db: Session = Depends(get_db),
 ):
-    agents = get_agents_summary(str(org.id), db)
+    agents = get_agents_summary(org.id, db)
     agents_data = [a.model_dump() for a in agents]
-    agents_data = enrich_agents_data(str(org.id), agents_data, db)
+    agents_data = enrich_agents_data(org.id, agents_data, db)
     recs = [r.model_dump() for r in run_basic_rules(agents_data)]
     now = datetime.now(UTC)
     result = []

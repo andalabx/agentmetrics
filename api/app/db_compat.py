@@ -11,7 +11,7 @@ def json_extract_text(col, key: str):
     """ORM expression: extract a text/scalar value from a JSON column at the given key."""
     if IS_SQLITE:
         return func.json_extract(col, f"$.{key}")
-    return col[key].astext
+    return cast(col[key], String)
 
 
 def json_sql_not_eq(column_name: str, key: str, value: str) -> str:

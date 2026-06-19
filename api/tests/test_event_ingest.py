@@ -8,7 +8,7 @@ def test_duplicate_trace_same_agent_is_deduplicated(client, db):
     payload = {
         "trace_id": "dup-trace-001",
         "agent_id": "my-agent",
-        "status": "completed",
+        "status": "success",
     }
     r1 = client.post("/v1/events", json=payload)
     r2 = client.post("/v1/events", json=payload)
@@ -22,7 +22,7 @@ def test_duplicate_trace_same_agent_is_deduplicated(client, db):
 
 def test_same_trace_different_agent_is_not_deduplicated(client, db):
     """Same trace_id but different agent_id should produce two rows."""
-    base = {"trace_id": "shared-trace", "status": "completed"}
+    base = {"trace_id": "shared-trace", "status": "success"}
     r1 = client.post("/v1/events", json={**base, "agent_id": "agent-a"})
     r2 = client.post("/v1/events", json={**base, "agent_id": "agent-b"})
     assert r1.status_code in (200, 201)
@@ -39,7 +39,7 @@ def test_missing_required_fields_returns_422(client):
 
 def test_negative_duration_ms_is_rejected(client):
     r = client.post("/v1/events", json={
-        "trace_id": "t1", "agent_id": "a", "status": "completed",
+        "trace_id": "t1", "agent_id": "a", "status": "success",
         "duration_ms": -1,
     })
     assert r.status_code == 422
@@ -47,7 +47,7 @@ def test_negative_duration_ms_is_rejected(client):
 
 def test_negative_cost_usd_is_rejected(client):
     r = client.post("/v1/events", json={
-        "trace_id": "t2", "agent_id": "a", "status": "completed",
+        "trace_id": "t2", "agent_id": "a", "status": "success",
         "cost_usd": -0.01,
     })
     assert r.status_code == 422
@@ -56,7 +56,7 @@ def test_negative_cost_usd_is_rejected(client):
 def test_oversized_metadata_is_rejected(client):
     big = {"key": "x" * 70_000}
     r = client.post("/v1/events", json={
-        "trace_id": "t3", "agent_id": "a", "status": "completed",
+        "trace_id": "t3", "agent_id": "a", "status": "success",
         "metadata": big,
     })
     assert r.status_code == 422
@@ -74,7 +74,7 @@ def test_error_field_is_truncated_to_max_length(client):
 
 def test_batch_accepts_up_to_100_events(client):
     events = [
-        {"trace_id": f"batch-{i}", "agent_id": "a", "status": "completed"}
+        {"trace_id": f"batch-{i}", "agent_id": "a", "status": "success"}
         for i in range(100)
     ]
     r = client.post("/v1/events/batch", json={"events": events})
@@ -83,7 +83,7 @@ def test_batch_accepts_up_to_100_events(client):
 
 def test_batch_rejects_more_than_100_events(client):
     events = [
-        {"trace_id": f"over-{i}", "agent_id": "a", "status": "completed"}
+        {"trace_id": f"over-{i}", "agent_id": "a", "status": "success"}
         for i in range(101)
     ]
     r = client.post("/v1/events/batch", json={"events": events})

@@ -19,10 +19,11 @@ def test_update_slack_webhook(client):
     assert res.json()["slack_webhook"] == webhook
 
 
-def test_me_no_org_returns_503(client, db):
+def test_me_deleted_org_returns_401(client, db):
     from app.models.organization import Organization
 
     db.query(Organization).delete()
     db.commit()
     res = client.get("/v1/auth/me")
-    assert res.status_code == 503
+    # After org is deleted the key hash no longer matches any org → 401
+    assert res.status_code == 401

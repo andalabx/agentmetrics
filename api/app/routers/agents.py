@@ -23,7 +23,7 @@ def list_agents(
     org: Organization = Depends(get_current_org_from_jwt),
     db: Session = Depends(get_db),
 ):
-    result = [a.model_dump() for a in get_agents_summary(str(org.id), db, limit=limit, offset=offset)]
+    result = [a.model_dump() for a in get_agents_summary(org.id, db, limit=limit, offset=offset)]
     return result
 
 @router.get("/names", response_model=dict[str, str])
@@ -88,7 +88,7 @@ def list_agent_runs(
     db: Session = Depends(get_db),
 ):
     from app.services.agent_service import get_agent_runs
-    runs, total = get_agent_runs(str(org.id), agent_id, db, limit=limit, offset=offset)
+    runs, total = get_agent_runs(org.id, agent_id, db, limit=limit, offset=offset)
     result = {"runs": [r.model_dump() for r in runs], "total": total, "limit": limit, "offset": offset}
     return result
 
@@ -98,7 +98,7 @@ def get_agent(
     org: Organization = Depends(get_current_org_from_jwt),
     db: Session = Depends(get_db),
 ):
-    detail = get_agent_detail(str(org.id), agent_id, db)
+    detail = get_agent_detail(org.id, agent_id, db)
     if not detail:
         raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found")
     return detail
