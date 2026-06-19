@@ -1,0 +1,137 @@
+name: Publish Python packages to PyPI
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    name: Build all packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - name: Build all packages
+        run: |
+          python -m build packages/python
+          python -m build api
+          python -m build packages/integrations/anthropic
+          python -m build packages/integrations/autogen
+          python -m build packages/integrations/crewai
+          python -m build packages/integrations/langchain
+          python -m build packages/integrations/llamaindex
+          python -m build packages/integrations/openai-agents
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dists
+          path: |
+            packages/python/dist/
+            api/dist/
+            packages/integrations/*/dist/
+
+  publish-agentmetrics:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dists, path: dists/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dists/packages/python/dist/
+
+  publish-server:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dists, path: dists/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dists/api/dist/
+
+  publish-anthropic:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dists, path: dists/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dists/packages/integrations/anthropic/dist/
+
+  publish-autogen:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dists, path: dists/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dists/packages/integrations/autogen/dist/
+
+  publish-crewai:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dists, path: dists/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dists/packages/integrations/crewai/dist/
+
+  publish-langchain:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dists, path: dists/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dists/packages/integrations/langchain/dist/
+
+  publish-llamaindex:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dists, path: dists/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dists/packages/integrations/llamaindex/dist/
+
+  publish-openai-agents:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: dists, path: dists/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dists/packages/integrations/openai-agents/dist/
