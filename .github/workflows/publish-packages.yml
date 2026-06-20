@@ -25,6 +25,7 @@ jobs:
           python -m build packages/integrations/langchain
           python -m build packages/integrations/llamaindex
           python -m build packages/integrations/openai-agents
+          python -m build packages/integrations/hermes
       - uses: actions/upload-artifact@v6
         with:
           name: dists
@@ -152,3 +153,15 @@ jobs:
         with:
           packages-dir: dists/packages/shared/python/dist/
 
+  publish-hermes:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with: { name: dists, path: dists/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dists/packages/integrations/hermes/dist/
