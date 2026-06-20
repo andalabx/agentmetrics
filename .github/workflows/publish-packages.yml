@@ -215,7 +215,14 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish ./packages/js --provenance --access public --ignore-scripts
+      - name: Publish agentmetrics
+        run: |
+          VERSION=$(node -p "require('./packages/js/package.json').version")
+          if npm view agentmetrics@$VERSION --json > /dev/null 2>&1; then
+            echo "agentmetrics@$VERSION already published, skipping"
+          else
+            npm publish ./packages/js --provenance --access public --ignore-scripts
+          fi
 
   publish-npm-anthropic:
     needs: build-npm
@@ -232,7 +239,14 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish ./packages/integrations/anthropic-js --provenance --access public --ignore-scripts
+      - name: Publish agentmetrics-anthropic
+        run: |
+          VERSION=$(node -p "require('./packages/integrations/anthropic-js/package.json').version")
+          if npm view agentmetrics-anthropic@$VERSION --json > /dev/null 2>&1; then
+            echo "agentmetrics-anthropic@$VERSION already published, skipping"
+          else
+            npm publish ./packages/integrations/anthropic-js --provenance --access public --ignore-scripts
+          fi
 
   publish-npm-langchain:
     needs: build-npm
@@ -249,7 +263,14 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish ./packages/integrations/langchain-js --provenance --access public --ignore-scripts
+      - name: Publish agentmetrics-langchain
+        run: |
+          VERSION=$(node -p "require('./packages/integrations/langchain-js/package.json').version")
+          if npm view agentmetrics-langchain@$VERSION --json > /dev/null 2>&1; then
+            echo "agentmetrics-langchain@$VERSION already published, skipping"
+          else
+            npm publish ./packages/integrations/langchain-js --provenance --access public --ignore-scripts
+          fi
 
   publish-npm-openclaw:
     needs: build-npm
@@ -266,4 +287,11 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish ./packages/integrations/openclaw --provenance --access public --ignore-scripts
+      - name: Publish agentmetrics-openclaw
+        run: |
+          VERSION=$(node -p "require('./packages/integrations/openclaw/package.json').version")
+          if npm view agentmetrics-openclaw@$VERSION --json > /dev/null 2>&1; then
+            echo "agentmetrics-openclaw@$VERSION already published, skipping"
+          else
+            npm publish ./packages/integrations/openclaw --provenance --access public --ignore-scripts
+          fi
