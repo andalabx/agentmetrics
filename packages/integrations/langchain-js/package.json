@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@agentmetrics/core": "workspace:*",
+    "@types/node": "^22.0.0",
     "@langchain/core": ">=0.2.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0"
