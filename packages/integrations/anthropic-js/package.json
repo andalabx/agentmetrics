@@ -30,17 +30,16 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsup src/index.ts --format esm,cjs --dts --no-splitting --external @anthropic-ai/sdk",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.49.0"
   },
-  "dependencies": {
-    "@agentmetrics/core": "workspace:*"
-  },
   "devDependencies": {
+    "@agentmetrics/core": "workspace:*",
     "@anthropic-ai/sdk": ">=0.49.0",
+    "tsup": "^8.0.0",
     "typescript": "^5.0.0"
   },
   "engines": {

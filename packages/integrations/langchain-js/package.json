@@ -29,17 +29,16 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsup src/index.ts --format esm,cjs --dts --no-splitting --external @langchain/core",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "@langchain/core": ">=0.2.0"
   },
-  "dependencies": {
-    "@agentmetrics/core": "workspace:*"
-  },
   "devDependencies": {
+    "@agentmetrics/core": "workspace:*",
     "@langchain/core": ">=0.2.0",
+    "tsup": "^8.0.0",
     "typescript": "^5.0.0"
   },
   "engines": {

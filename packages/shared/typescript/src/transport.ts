@@ -226,7 +226,7 @@ export async function _flushBatch(batch: QueuedEvent[]): Promise<void> {
     const resp = await fetch(`${_cfg.baseUrl}/v1/events/batch`, {
       method:  "POST",
       headers: { ..._buildHeaders(), ...extra },
-      body,
+      body: body as BodyInit,
     });
     if (resp.ok) {
       _cbOnSuccess();
@@ -252,7 +252,7 @@ export async function _flushIndividual(batch: QueuedEvent[]): Promise<void> {
       const resp = await fetch(`${_cfg.baseUrl}/v1/events`, {
         method:  "POST",
         headers: { ..._buildHeaders(), ...extra },
-        body,
+        body: body as BodyInit,
       });
       if (resp.ok) {
         _cbOnSuccess();

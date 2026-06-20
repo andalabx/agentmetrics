@@ -16,6 +16,7 @@ jobs:
       - run: pip install build
       - name: Build all packages
         run: |
+          python -m build packages/shared/python
           python -m build packages/python
           python -m build api
           python -m build packages/integrations/anthropic
@@ -28,6 +29,7 @@ jobs:
         with:
           name: dists
           path: |
+            packages/shared/python/dist/
             packages/python/dist/
             api/dist/
             packages/integrations/*/dist/
@@ -136,3 +138,17 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/packages/integrations/openai-agents/dist/
+
+  publish-shared:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with: { name: dists, path: dists/ }
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dists/packages/shared/python/dist/
+
