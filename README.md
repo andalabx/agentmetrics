@@ -155,7 +155,7 @@ If you are using a framework like LangChain, CrewAI, or the OpenAI Agents SDK, d
 | **Anthropic** (JS) | `npm install agentmetrics-anthropic` |
 | **AutoGen** | `pip install agentmetrics-autogen` |
 | **OpenClaw** | `openclaw plugins install agentmetrics-openclaw` |
-| **Hermes** | `hermes plugins install agentmetrics-hermes` |
+| **Hermes** | `pip install agentmetrics-hermes` |
 
 See [`packages/integrations/`](packages/integrations/) for setup guides.
 

@@ -26,7 +26,7 @@ dev = [
 Homepage = "https://github.com/andalabx/agentmetrics"
 Repository = "https://github.com/andalabx/agentmetrics.git"
 
-[project.entry-points."hermes_plugins"]
+[project.entry-points."hermes_agent.plugins"]
 agentmetrics = "agentmetrics_hermes"
 
 [tool.setuptools.packages.find]

@@ -108,7 +108,7 @@ export AGENTMETRICS_BASE_URL=http://localhost:8099
       ];
     case "hermes":
       return [
-        { label: "1. Install plugin", code: "hermes plugins install agentmetrics-hermes" },
+        { label: "1. Install plugin", code: "pip install agentmetrics-hermes" },
         { label: "2. Set server URL", code: `# In your shell or Hermes config
 export AGENTMETRICS_BASE_URL=http://localhost:8099
 

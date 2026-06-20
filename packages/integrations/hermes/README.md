@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/agentmetrics-hermes?color=6366f1&label=pypi&logo=python&logoColor=white)](https://pypi.org/project/agentmetrics-hermes)
 [![License: MIT](https://img.shields.io/badge/license-MIT-6366f1)](../../LICENSE)
 
-AgentMetrics observability plugin for [Hermes](https://github.com/andalabx/hermes) agents. Auto-discovered via the `hermes_plugins` entry-point — no code changes needed.
+AgentMetrics observability plugin for [Hermes](https://github.com/andalabx/hermes) agents. Auto-discovered via the `hermes_agent.plugins` entry-point — no code changes needed.
 
 ---
 

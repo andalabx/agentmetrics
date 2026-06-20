@@ -12,7 +12,7 @@ Hermes is a Claude Code plugin framework. The AgentMetrics Hermes integration is
 pip install agentmetrics-hermes
 ```
 
-The Hermes plugin is auto-discovered via the `hermes_plugins` entry-point — no import or code change needed.
+The Hermes plugin is auto-discovered via the `hermes_agent.plugins` entry-point — no import or code change needed.
 
 ## Configuration
 

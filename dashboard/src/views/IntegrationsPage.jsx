@@ -623,7 +623,7 @@ await tracker.track(client, "sess_...", async (stream) => {
 }
 
 function HermesContent() {
-  const install   = `hermes plugins install agentmetrics-hermes`;
+  const install   = `pip install agentmetrics-hermes`;
   const config_ts = `import agentmetrics from "agentmetrics-hermes";
 
 export default {
