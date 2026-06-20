@@ -10,8 +10,8 @@ jobs:
     name: Build all packages
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b  # v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install build
@@ -179,7 +179,7 @@ jobs:
   build-npm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -207,7 +207,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -215,7 +215,7 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/js --provenance --access public
+      - run: npm publish packages/js --provenance --access public --ignore-scripts
 
   publish-npm-anthropic:
     needs: build-npm
@@ -224,7 +224,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -232,7 +232,7 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/integrations/anthropic-js --provenance --access public
+      - run: npm publish packages/integrations/anthropic-js --provenance --access public --ignore-scripts
 
   publish-npm-langchain:
     needs: build-npm
@@ -241,7 +241,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -249,7 +249,7 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/integrations/langchain-js --provenance --access public
+      - run: npm publish packages/integrations/langchain-js --provenance --access public --ignore-scripts
 
   publish-npm-openclaw:
     needs: build-npm
@@ -258,7 +258,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -266,4 +266,4 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/integrations/openclaw --provenance --access public
+      - run: npm publish packages/integrations/openclaw --provenance --access public --ignore-scripts
