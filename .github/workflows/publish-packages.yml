@@ -62,6 +62,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/api/dist/
+          skip-existing: true
 
   publish-anthropic:
     needs: build
@@ -75,6 +76,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/packages/integrations/anthropic/dist/
+          skip-existing: true
 
   publish-autogen:
     needs: build
@@ -88,6 +90,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/packages/integrations/autogen/dist/
+          skip-existing: true
 
   publish-crewai:
     needs: build
@@ -101,6 +104,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/packages/integrations/crewai/dist/
+          skip-existing: true
 
   publish-langchain:
     needs: build
@@ -114,6 +118,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/packages/integrations/langchain/dist/
+          skip-existing: true
 
   publish-llamaindex:
     needs: build
@@ -127,6 +132,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/packages/integrations/llamaindex/dist/
+          skip-existing: true
 
   publish-openai-agents:
     needs: build
@@ -140,6 +146,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/packages/integrations/openai-agents/dist/
+          skip-existing: true
 
   publish-shared:
     needs: build
@@ -153,6 +160,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/packages/shared/python/dist/
+          skip-existing: true
 
   publish-hermes:
     needs: build
@@ -166,6 +174,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/packages/integrations/hermes/dist/
+          skip-existing: true
 
   build-npm:
     runs-on: ubuntu-latest
@@ -181,7 +190,7 @@ jobs:
       - run: pnpm --filter agentmetrics build
       - run: pnpm --filter agentmetrics-anthropic build
       - run: pnpm --filter agentmetrics-langchain build
-      - run: pnpm --filter agentmetrics-openclaw build
+      - run: npm install --prefix packages/integrations/openclaw && npm run build --prefix packages/integrations/openclaw
       - uses: actions/upload-artifact@v6
         with:
           name: npm-dists
@@ -203,6 +212,7 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+      - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
       - run: npm publish packages/js --provenance --access public
@@ -219,6 +229,7 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+      - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
       - run: npm publish packages/integrations/anthropic-js --provenance --access public
@@ -235,6 +246,7 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+      - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
       - run: npm publish packages/integrations/langchain-js --provenance --access public
@@ -251,6 +263,7 @@ jobs:
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+      - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
       - run: npm publish packages/integrations/openclaw --provenance --access public
