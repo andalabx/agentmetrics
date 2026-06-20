@@ -98,8 +98,8 @@ def cmd_redaction_check(cfg: AgentMetricsConfig) -> str:
     lines.append("")
     lines.append(f"  Tool name policy ({cfg.exported_tool_names}):")
     for name in tool_names:
-        result = redact_tool_name(name, cfg)
-        lines.append(f"    {name}: {result or '[not exported]'}")
+        tool_result = redact_tool_name(name, cfg)
+        lines.append(f"    {name}: {tool_result or '[not exported]'}")
 
     return "\n".join(lines)
 

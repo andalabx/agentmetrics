@@ -108,7 +108,7 @@ def scrub_event(payload: dict[str, Any], mode: RedactionMode) -> dict[str, Any]:
     if mode == RedactionMode.DEBUG:
         return payload
     result, _ = _scrub_dict_and_count(payload, mode)
-    return result  # type: ignore[return-value]
+    return result  # type: ignore[no-any-return]
 
 
 def scrub_event_and_count(payload: dict[str, Any], mode: RedactionMode) -> tuple[dict[str, Any], int]:
