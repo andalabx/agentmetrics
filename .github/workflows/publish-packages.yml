@@ -215,7 +215,7 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/js --provenance --access public --ignore-scripts
+      - run: npm publish ./packages/js --provenance --access public --ignore-scripts
 
   publish-npm-anthropic:
     needs: build-npm
@@ -232,7 +232,7 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/integrations/anthropic-js --provenance --access public --ignore-scripts
+      - run: npm publish ./packages/integrations/anthropic-js --provenance --access public --ignore-scripts
 
   publish-npm-langchain:
     needs: build-npm
@@ -249,7 +249,7 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/integrations/langchain-js --provenance --access public --ignore-scripts
+      - run: npm publish ./packages/integrations/langchain-js --provenance --access public --ignore-scripts
 
   publish-npm-openclaw:
     needs: build-npm
@@ -266,4 +266,4 @@ jobs:
       - run: npm install -g npm@latest
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/integrations/openclaw --provenance --access public --ignore-scripts
+      - run: npm publish ./packages/integrations/openclaw --provenance --access public --ignore-scripts
