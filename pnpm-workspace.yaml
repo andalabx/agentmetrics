@@ -3,3 +3,4 @@ packages:
   - "packages/js"
   - "packages/integrations/langchain-js"
   - "packages/integrations/anthropic-js"
+  - "packages/shared/typescript"

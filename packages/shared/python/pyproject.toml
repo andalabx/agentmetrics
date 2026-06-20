@@ -1,0 +1,10 @@
+[project]
+name = "agentmetrics-shared"
+version = "0.2.0"
+requires-python = ">=3.11"
+description = "Shared event schema, pricing, and redaction for all agentmetrics integrations"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

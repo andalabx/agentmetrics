@@ -3,6 +3,7 @@ exclude-newer = "7 days"
 
 [tool.uv.workspace]
 members = [
+    "packages/shared/python",
     "packages/python",
     "packages/integrations/langchain",
     "packages/integrations/crewai",
