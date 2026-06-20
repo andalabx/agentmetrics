@@ -6,7 +6,11 @@
     "dev": "pnpm --parallel run dev",
     "build": "pnpm --filter dashboard build",
     "lint": "pnpm --recursive run lint",
-    "type-check": "pnpm --recursive run type-check"
+    "type-check": "pnpm --recursive run type-check",
+    "generate-types": "npx openapi-typescript http://localhost:8099/openapi.json -o dashboard/src/types/api.ts"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.0.0"
   },
   "version": ""
 }
