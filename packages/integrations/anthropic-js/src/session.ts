@@ -1,36 +1,6 @@
 import { randomUUID } from "crypto";
-
-
-const PRICING: Record<string, [number, number, number, number]> = {
-  // [input, output, cache_read, cache_write] - USD per 1M tokens
-  "claude-opus-4-7":            [15.00,  75.00, 1.50, 18.75],
-  "claude-sonnet-4-6":          [3.00,   15.00, 0.30,  3.75],
-  "claude-haiku-4-5-20251001":  [0.80,    4.00, 0.08,  1.00],
-  "claude-haiku-4-5":           [0.80,    4.00, 0.08,  1.00],
-  "claude-3-7-sonnet-20250219": [3.00,   15.00, 0.30,  3.75],
-  "claude-3-5-sonnet-20241022": [3.00,   15.00, 0.30,  3.75],
-  "claude-3-5-haiku-20241022":  [0.80,    4.00, 0.08,  1.00],
-  "claude-3-opus-20240229":     [15.00,  75.00, 1.50, 18.75],
-  "claude-3-sonnet-20240229":   [3.00,   15.00, 0.30,  3.75],
-  "claude-3-haiku-20240307":    [0.25,    1.25, 0.03,  0.30],
-};
-
-function estimateCost(
-  model: string | null,
-  inputTokens: number,
-  outputTokens: number,
-  cacheReadTokens: number,
-  cacheWriteTokens: number,
-): number | null {
-  if (!model) return null;
-  const key = Object.keys(PRICING).find(k => model.startsWith(k)) ?? null;
-  if (!key) return null;
-  const [ip, op, cr, cw] = PRICING[key];
-  return (
-    (inputTokens * ip + outputTokens * op +
-     cacheReadTokens * cr + cacheWriteTokens * cw) / 1_000_000
-  );
-}
+import type { AgentEndEvent } from "@agentmetrics/core";
+import { estimateCost as sharedEstimateCost } from "@agentmetrics/core";
 
 
 const MAX_RETRY_ATTEMPTS = 3;
@@ -42,7 +12,7 @@ function sleep(ms: number): Promise<void> {
 async function sendWithRetry(
   url: string,
   apiKey: string,
-  payload: Record<string, unknown>,
+  payload: object,
 ): Promise<void> {
   const body = JSON.stringify(payload);
   for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
@@ -148,12 +118,15 @@ async function emit(
   state: SessionState,
 ): Promise<void> {
   const durationMs = performance.now() - state.startMs;
-  const est = estimateCost(
-    state.model, state.inputTokens, state.outputTokens,
-    state.cacheReadTokens, state.cacheWriteTokens,
+  const est = sharedEstimateCost(
+    state.model ?? undefined,
+    state.inputTokens,
+    state.outputTokens,
+    state.cacheReadTokens,
+    state.cacheWriteTokens,
   );
 
-  const payload: Record<string, unknown> = {
+  const payload: AgentEndEvent = {
     event_id:                 randomUUID(),
     trace_id:                 state.sessionId,
     agent_id:                 state.agentId,
@@ -169,12 +142,12 @@ async function emit(
     llm_calls:   state.llmCalls,
     input_tokens:  state.inputTokens,
     output_tokens: state.outputTokens,
+    ...(state.model            ? { model:              state.model            } : {}),
+    ...(state.error            ? { error:              state.error            } : {}),
+    ...(state.cacheReadTokens  ? { cache_read_tokens:  state.cacheReadTokens  } : {}),
+    ...(state.cacheWriteTokens ? { cache_write_tokens: state.cacheWriteTokens } : {}),
+    ...(est != null            ? { estimated_cost_usd: est                    } : {}),
   };
-  if (state.model)            payload["model"]              = state.model;
-  if (state.error)            payload["error"]              = state.error;
-  if (state.cacheReadTokens)  payload["cache_read_tokens"]  = state.cacheReadTokens;
-  if (state.cacheWriteTokens) payload["cache_write_tokens"] = state.cacheWriteTokens;
-  if (est !== null)           payload["estimated_cost_usd"] = est;
 
   sendWithRetry(baseUrl, apiKey, payload).catch(() => {});
 }

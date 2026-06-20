@@ -31,28 +31,68 @@ export function _scrubSecrets(str: string): string {
 }
 
 export const _PRICING: Record<string, [number, number, number?, number?]> = {
-  "claude-opus-4-7":            [15.0,  75.0,  1.50, 18.75],
-  "claude-opus-4-5":            [15.0,  75.0,  1.50, 18.75],
-  "claude-opus-4":              [15.0,  75.0,  1.50, 18.75],
-  "claude-sonnet-4-6":          [ 3.0,  15.0,  0.30,  3.75],
-  "claude-sonnet-4-5":          [ 3.0,  15.0,  0.30,  3.75],
-  "claude-haiku-4-5":           [ 0.8,   4.0,  0.08,  1.00],
-  "claude-sonnet-3-7":          [ 3.0,  15.0,  0.30,  3.75],
-  "claude-3-5-sonnet-20241022": [ 3.0,  15.0,  0.30,  3.75],
-  "claude-3-5-sonnet-20240620": [ 3.0,  15.0,  0.30,  3.75],
-  "claude-3-5-haiku-20241022":  [ 0.8,   4.0,  0.08,  1.00],
-  "claude-3-opus-20240229":     [15.0,  75.0,  1.50, 18.75],
-  "claude-3-sonnet-20240229":   [ 3.0,  15.0],
-  "claude-3-haiku-20240307":    [ 0.25,  1.25, 0.03,  0.30],
-  "gpt-4o":                     [ 2.5,  10.0],
-  "gpt-4o-mini":                [ 0.15,  0.60],
-  "gpt-4-turbo":                [10.0,  30.0],
-  "gpt-4":                      [30.0,  60.0],
-  "gpt-3.5-turbo":              [ 0.50,  1.50],
-  "gemini-2.0-flash":           [ 0.075, 0.30],
-  "gemini-2.5-pro":             [ 1.25, 10.0],
-  "gemini-1.5-pro":             [ 1.25,  5.0],
-  "gemini-1.5-flash":           [ 0.075, 0.30],
+  // ── Anthropic ──────────────────────────────────────────────────────────────
+  "claude-opus-4":               [15.00, 75.00,  1.50, 18.75],
+  "claude-sonnet-4":             [ 3.00, 15.00,  0.30,  3.75],
+  "claude-haiku-4":              [ 0.80,  4.00,  0.08,  1.00],
+  "claude-3-7-sonnet":           [ 3.00, 15.00,  0.30,  3.75],
+  "claude-3-5-sonnet":           [ 3.00, 15.00,  0.30,  3.75],
+  "claude-3-5-haiku":            [ 0.80,  4.00,  0.08,  1.00],
+  "claude-3-opus":               [15.00, 75.00,  1.50, 18.75],
+  "claude-3-haiku":              [ 0.25,  1.25,  0.03,  0.30],
+  "claude-3-sonnet":             [ 3.00, 15.00],
+  // ── OpenAI ─────────────────────────────────────────────────────────────────
+  "gpt-4.1-nano":                [ 0.10,  0.40,  0.025],
+  "gpt-4.1-mini":                [ 0.40,  1.60,  0.10],
+  "gpt-4.1":                     [ 2.00,  8.00,  0.50],
+  "gpt-4o-mini":                 [ 0.15,  0.60,  0.075],
+  "gpt-4o":                      [ 2.50, 10.00,  1.25],
+  "gpt-4-turbo":                 [10.00, 30.00],
+  "gpt-4":                       [30.00, 60.00],
+  "gpt-3.5-turbo":               [ 0.50,  1.50],
+  "o3-mini":                     [ 1.10,  4.40,  0.55],
+  "o3":                          [10.00, 40.00,  2.50],
+  "o1-mini":                     [ 1.10,  4.40,  0.55],
+  "o1":                          [15.00, 60.00,  7.50],
+  // ── Google Gemini ──────────────────────────────────────────────────────────
+  "gemini-2.5-pro":              [ 1.25, 10.00],
+  "gemini-2.5-flash":            [ 0.15,  0.60],
+  "gemini-2.0-flash":            [ 0.10,  0.40],
+  "gemini-1.5-pro":              [ 1.25,  5.00],
+  "gemini-1.5-flash":            [ 0.075, 0.30],
+  // ── DeepSeek ───────────────────────────────────────────────────────────────
+  "deepseek-reasoner":           [ 0.55,  2.19],
+  "deepseek-chat":               [ 0.14,  0.28],
+  "deepseek-coder":              [ 0.14,  0.28],
+  // ── Meta / Llama (namespace-stripped prefix keys) ──────────────────────────
+  "llama-4-maverick":            [ 0.27,  0.85],
+  "llama-4-scout":               [ 0.18,  0.59],
+  "llama-3.3-70b":               [ 0.88,  0.88],
+  "llama-3-70b":                 [ 0.65,  2.75],
+  "llama-3-8b":                  [ 0.05,  0.20],
+  // ── Alibaba / Qwen ─────────────────────────────────────────────────────────
+  "qwen3-235b":                  [ 4.00, 16.00],
+  "qwen3-32b":                   [ 0.30,  1.20],
+  "qwen3-4b":                    [ 0.02,  0.08],
+  // ── Arcee ──────────────────────────────────────────────────────────────────
+  "trinity-large":               [ 0.25,  1.00,  0.25,  0.25],
+  "trinity-mini":                [ 0.045, 0.15,  0.045, 0.045],
+  // ── Together AI / HuggingFace (namespace-stripped prefix keys) ─────────────
+  "kimi-k2":                     [ 0.50,  2.80],
+  "deepseek-v3":                 [ 0.60,  1.25],
+  "deepseek-r1":                 [ 3.00,  7.00],
+  // ── Vercel AI Gateway ──────────────────────────────────────────────────────
+  "gpt-5.4-pro":                 [30.00, 180.00],
+  "gpt-5.4":                     [ 2.50, 15.00,  0.25],
+  // ── AWS Bedrock ────────────────────────────────────────────────────────────
+  "anthropic.claude-opus-4":     [15.00, 75.00],
+  "anthropic.claude-sonnet-4":   [ 3.00, 15.00],
+  "anthropic.claude-haiku-4":    [ 0.80,  4.00],
+  "anthropic.claude-3-5-sonnet": [ 3.00, 15.00],
+  "anthropic.claude-3-5-haiku":  [ 0.80,  4.00],
+  "amazon.nova-pro":             [ 0.80,  3.20],
+  "amazon.nova-lite":            [ 0.06,  0.24],
+  "amazon.nova-micro":           [ 0.035, 0.14],
 };
 
 // ── Mutable config (mutated by each plugin's register()) ─────────────────────
@@ -417,6 +457,9 @@ export function _redactToolNames(names: string[]): string[] {
 
 // ── Cost estimation ───────────────────────────────────────────────────────────
 
+// Pre-sorted longest-first so "gpt-4o-mini" matches before "gpt-4o", etc.
+const _PRICING_KEYS = Object.keys(_PRICING).sort((a, b) => b.length - a.length);
+
 export function _estimateCost(
   model:      string | undefined,
   input:      number,
@@ -425,18 +468,38 @@ export function _estimateCost(
   cacheWrite: number,
 ): number | undefined {
   if (!model) return undefined;
-  const key   = model.toLowerCase();
-  const rates =
-    _cfg.costProviderTable[key] ??
-    _cfg.costProviderTable[key.replace(/-\d{8}$/, "")] ??
-    _PRICING[key] ??
-    _PRICING[key.replace(/-\d{8}$/, "")];
-  if (!rates) return undefined;
-  const M = 1_000_000;
-  return (
-    input      * rates[0]          / M +
-    output     * rates[1]          / M +
-    cacheRead  * (rates[2] ?? 0)   / M +
-    cacheWrite * (rates[3] ?? 0)   / M
-  );
+
+  let key = model.toLowerCase().trim();
+  // Strip provider namespace: "openai/gpt-4o" → "gpt-4o"
+  if (key.includes("/")) key = key.split("/").slice(1).join("/");
+
+  // Check user overrides first (also longest-first)
+  const overrideKeys = Object.keys(_cfg.costProviderTable).sort((a, b) => b.length - a.length);
+  for (const prefix of overrideKeys) {
+    if (key.startsWith(prefix.toLowerCase())) {
+      const r = _cfg.costProviderTable[prefix];
+      const M = 1_000_000;
+      return input * r[0] / M + output * r[1] / M + cacheRead * (r[2] ?? 0) / M + cacheWrite * (r[3] ?? 0) / M;
+    }
+  }
+
+  // Check built-in table
+  for (const prefix of _PRICING_KEYS) {
+    if (key.startsWith(prefix)) {
+      const r = _PRICING[prefix];
+      const M = 1_000_000;
+      return input * r[0] / M + output * r[1] / M + cacheRead * (r[2] ?? 0) / M + cacheWrite * (r[3] ?? 0) / M;
+    }
+  }
+
+  return undefined; // unknown model — no guessing
+}
+
+export function _registerModelPrices(
+  catalog: Record<string, [number, number, number?, number?]>,
+): void {
+  for (const model of Object.keys(catalog)) {
+    if (!Object.prototype.hasOwnProperty.call(catalog, model)) continue;
+    _cfg.costProviderTable[model.toLowerCase()] = catalog[model];
+  }
 }

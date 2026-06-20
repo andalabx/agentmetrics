@@ -1,6 +1,6 @@
 {
   "name": "agentmetrics-anthropic",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "AgentMetrics observability integration for Claude Managed Agents",
   "license": "MIT",
@@ -35,6 +35,9 @@
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.49.0"
+  },
+  "dependencies": {
+    "@agentmetrics/core": "workspace:*"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": ">=0.49.0",

@@ -4,8 +4,49 @@ import {
   CB_PROBE_MS,
   _activeMode, _cb, _cbIsOpen, _cfg, _dlq, _estimateCost,
   _flush, _metrics, _queue, _redactError, _redactToolName, _redactToolNames,
-  _walInit, send, sendActivity, sessions,
+  _registerModelPrices, _walInit, send, sendActivity, sessions,
 } from "../_shared/core.js";
+
+// OpenClaw-specific model pricing — covers Together AI, Chutes, HuggingFace,
+// Arcee extended variants, and Vercel AI Gateway models whose IDs (after
+// namespace stripping) are not in the shared static table.
+// Keys are lowercase namespace-stripped model IDs (exactly what _estimateCost
+// receives after "provider/model-id" → "model-id" normalization).
+const _OPENCLAW_CATALOG: Record<string, [number, number, number?, number?]> = {
+  // ── Arcee extended ─────────────────────────────────────────────────────────
+  "trinity-large-preview":                    [0.25,  1.00,  0.25,  0.25],
+  "trinity-large-thinking":                   [0.25,  0.90,  0.25,  0.25],
+  // ── Together AI ────────────────────────────────────────────────────────────
+  "llama-3.3-70b-instruct-turbo":             [0.88,  0.88,  0.88,  0.88],
+  "llama-4-scout-17b-16e-instruct":           [0.18,  0.59,  0.18,  0.18],
+  "llama-4-maverick-17b-128e-instruct-fp8":   [0.27,  0.85,  0.27,  0.27],
+  "deepseek-v3.1":                            [0.60,  1.25,  0.60,  0.60],
+  "kimi-k2.5":                                [0.50,  2.80,  0.50,  2.80],
+  "kimi-k2-instruct-0905":                    [1.00,  3.00,  1.00,  3.00],
+  "glm-4.7":                                  [0.45,  2.00,  0.45,  2.00],
+  // ── Chutes ─────────────────────────────────────────────────────────────────
+  "qwen3-32b":                                [0.08,  0.24],
+  "qwen3-14b":                                [0.05,  0.22],
+  "qwen3-30b-a3b":                            [0.06,  0.22],
+  "qwen3-235b-a22b-instruct-2507-tee":        [0.08,  0.55],
+  "qwen3-235b-a22b-thinking-2507":            [0.11,  0.60],
+  "qwen2.5-72b-instruct":                     [0.30,  1.20],
+  "qwen2.5-coder-32b-instruct":               [0.03,  0.11],
+  "deepseek-v3-0324-tee":                     [0.25,  1.00],
+  "deepseek-v3.1-tee":                        [0.20,  0.80],
+  "deepseek-v3.2-tee":                        [0.28,  0.42],
+  "deepseek-v3":                              [0.30,  1.20],
+  "deepseek-r1-0528-tee":                     [0.45,  2.15],
+  "deepseek-r1-distill-llama-70b":            [0.03,  0.11],
+  "glm-4.7-tee":                              [0.40,  2.00],
+  "glm-4.7-fp8":                              [0.30,  1.20],
+  "glm-4.6-tee":                              [0.40,  1.70],
+  "glm-4.6-fp8":                              [0.30,  1.20],
+  "kimi-k2.5-tee":                            [0.45,  2.20],
+  "minimax-m2.5-tee":                         [0.30,  1.10],
+  // ── Vercel AI Gateway ──────────────────────────────────────────────────────
+  "claude-opus-4.6":                          [5.00,  25.00, 0.50,  6.25],
+};
 
 interface PluginApi {
   config:         Record<string, unknown>;
@@ -178,6 +219,10 @@ const plugin = {
 
     const home = process.env.HOME ?? process.env.USERPROFILE ?? process.cwd();
     _walInit(join(home, ".config", "openclaw", "agentmetrics-wal.jsonl"));
+
+    // Register OpenClaw-specific model pricing (provider-routed IDs not in
+    // the shared static table, e.g. Together AI, Chutes, Vercel AI Gateway).
+    _registerModelPrices(_OPENCLAW_CATALOG);
 
     if (_cfg.flushTimer) clearInterval(_cfg.flushTimer);
     _cfg.flushTimer = setInterval(() => { _flush().catch(() => {}); }, _cfg.flushIntervalMs);

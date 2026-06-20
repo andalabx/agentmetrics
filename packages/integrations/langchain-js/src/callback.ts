@@ -3,40 +3,8 @@ import { BaseCallbackHandler } from "@langchain/core/callbacks/base";
 import type { Serialized } from "@langchain/core/load/serializable";
 import type { LLMResult } from "@langchain/core/outputs";
 import type { ChainValues } from "@langchain/core/utils/types";
-
-
-const PRICING: Record<string, [number, number, number, number]> = {
-  // [input, output, cache_read, cache_write]
-  "gpt-4o":                    [2.50,  10.00, 1.25,  0],
-  "gpt-4o-mini":               [0.15,   0.60, 0.075, 0],
-  "gpt-4-turbo":               [10.00,  30.00, 0,    0],
-  "gpt-3.5-turbo":             [0.50,   1.50,  0,    0],
-  "claude-3-5-sonnet-20241022":[3.00,  15.00, 0.30, 3.75],
-  "claude-3-5-haiku-20241022": [0.80,   4.00, 0.08, 1.00],
-  "claude-3-opus-20240229":    [15.00,  75.00, 1.50, 18.75],
-  "claude-sonnet-4-6":         [3.00,  15.00, 0.30, 3.75],
-  "claude-opus-4-7":           [15.00,  75.00, 1.50, 18.75],
-  "claude-haiku-4-5-20251001": [0.80,   4.00, 0.08, 1.00],
-  "gemini-1.5-pro":            [1.25,   5.00,  0,    0],
-  "gemini-1.5-flash":          [0.075,  0.30,  0,    0],
-};
-
-function estimateCost(
-  model: string | null,
-  inputTokens: number,
-  outputTokens: number,
-  cacheReadTokens: number,
-  cacheWriteTokens: number,
-): number | null {
-  if (!model) return null;
-  const key = Object.keys(PRICING).find(k => model.startsWith(k)) ?? null;
-  if (!key) return null;
-  const [ip, op, cr, cw] = PRICING[key];
-  return (
-    (inputTokens * ip + outputTokens * op +
-     cacheReadTokens * cr + cacheWriteTokens * cw) / 1_000_000
-  );
-}
+import type { AgentEndEvent } from "@agentmetrics/core";
+import { estimateCost as sharedEstimateCost } from "@agentmetrics/core";
 
 
 const MAX_RETRY_ATTEMPTS = 3;
@@ -48,7 +16,7 @@ function sleep(ms: number): Promise<void> {
 async function sendWithRetry(
   url: string,
   apiKey: string,
-  payload: Record<string, unknown>,
+  payload: object,
 ): Promise<void> {
   const body = JSON.stringify(payload);
   for (let attempt = 0; attempt < MAX_RETRY_ATTEMPTS; attempt++) {
@@ -300,12 +268,15 @@ export class AgentMetricsCallback extends BaseCallbackHandler {
     }
 
     const durationMs = performance.now() - run.startMs;
-    const est = estimateCost(
-      run.model, run.inputTokens, run.outputTokens,
-      run.cacheReadTokens, run.cacheWriteTokens,
+    const est = sharedEstimateCost(
+      run.model ?? undefined,
+      run.inputTokens,
+      run.outputTokens,
+      run.cacheReadTokens,
+      run.cacheWriteTokens,
     );
 
-    const payload: Record<string, unknown> = {
+    const payload: AgentEndEvent = {
       event_id:                 randomUUID(),
       trace_id:                 runId,
       agent_id:                 run.agentId,
@@ -321,12 +292,12 @@ export class AgentMetricsCallback extends BaseCallbackHandler {
       llm_calls:   run.llmCalls,
       input_tokens:  run.inputTokens,
       output_tokens: run.outputTokens,
+      ...(run.model            ? { model:              run.model            } : {}),
+      ...(run.error            ? { error:              run.error            } : {}),
+      ...(run.cacheReadTokens  ? { cache_read_tokens:  run.cacheReadTokens  } : {}),
+      ...(run.cacheWriteTokens ? { cache_write_tokens: run.cacheWriteTokens } : {}),
+      ...(est != null          ? { estimated_cost_usd: est                  } : {}),
     };
-    if (run.model)            payload["model"]              = run.model;
-    if (run.error)            payload["error"]              = run.error;
-    if (run.cacheReadTokens)  payload["cache_read_tokens"]  = run.cacheReadTokens;
-    if (run.cacheWriteTokens) payload["cache_write_tokens"] = run.cacheWriteTokens;
-    if (est !== null)         payload["estimated_cost_usd"] = est;
 
     // fire-and-forget: don't block the caller
     sendWithRetry(this._baseUrl, this._apiKey, payload).catch(() => {});

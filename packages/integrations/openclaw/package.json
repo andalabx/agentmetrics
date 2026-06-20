@@ -1,6 +1,6 @@
 {
   "name": "agentmetrics-openclaw",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "type": "module",
   "description": "AgentMetrics observability plugin for OpenClaw agents",
   "license": "MIT",

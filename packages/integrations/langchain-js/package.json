@@ -1,6 +1,6 @@
 {
   "name": "agentmetrics-langchain",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "AgentMetrics observability integration for LangChain.js",
   "license": "MIT",
@@ -34,6 +34,9 @@
   },
   "peerDependencies": {
     "@langchain/core": ">=0.2.0"
+  },
+  "dependencies": {
+    "@agentmetrics/core": "workspace:*"
   },
   "devDependencies": {
     "@langchain/core": ">=0.2.0",
