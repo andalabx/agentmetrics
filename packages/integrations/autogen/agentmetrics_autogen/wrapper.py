@@ -6,50 +6,7 @@ import uuid
 from typing import Any
 
 from agentmetrics.http_client import HttpClient
-
-
-def _build_payload(
-    agent_id: str,
-    trace_id: str,
-    status: str,
-    duration_ms: float,
-    tool_calls: int,
-    tool_errors: int,
-    tool_names: set[str],
-    llm_calls: int,
-    input_tokens: int,
-    output_tokens: int,
-    cache_read_tokens: int,
-    cache_write_tokens: int,
-    estimated_cost_usd: float | None,
-    error: str | None,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "event_id":                 str(uuid.uuid4()),
-        "trace_id":                 trace_id,
-        "agent_id":                 agent_id,
-        "platform":                 "autogen",
-        "event_name":               "agent_end",
-        "ts":                       int(time.time() * 1000),
-        "redaction_policy_version": "v1-strict",
-        "status":        status,
-        "duration_ms":   round(duration_ms, 2),
-        "tool_calls":    tool_calls,
-        "tool_errors":   tool_errors,
-        "tool_names":    list(tool_names),
-        "llm_calls":     llm_calls,
-        "input_tokens":  input_tokens,
-        "output_tokens": output_tokens,
-    }
-    if cache_read_tokens:
-        payload["cache_read_tokens"] = cache_read_tokens
-    if cache_write_tokens:
-        payload["cache_write_tokens"] = cache_write_tokens
-    if estimated_cost_usd is not None:
-        payload["estimated_cost_usd"] = estimated_cost_usd
-    if error:
-        payload["error"] = error[:500]
-    return payload
+from agentmetrics_shared import AgentEndEvent, estimate_cost
 
 
 class AgentMetricsRunStream:
@@ -121,23 +78,24 @@ class _RunContext:
         if exc_type is asyncio.CancelledError:
             self._status = "cancelled"
             duration_ms = (time.monotonic() - self._start_ms) * 1000
-            payload = _build_payload(
-                self._agent_id,
-                self._trace_id,
-                self._status,
-                duration_ms,
-                self._tool_calls,
-                self._tool_errors,
-                self._tool_names,
-                self._llm_calls,
-                self._input_tokens,
-                self._output_tokens,
-                self._cache_read_tokens,
-                self._cache_write_tokens,
-                None,
-                self._error,
-            )
-            self._client.fire_and_forget(payload)
+            ev = AgentEndEvent(agent_id=self._agent_id, platform="autogen")
+            ev.trace_id           = self._trace_id
+            ev.input_tokens       = self._input_tokens
+            ev.output_tokens      = self._output_tokens
+            ev.cache_read_tokens  = self._cache_read_tokens
+            ev.cache_write_tokens = self._cache_write_tokens
+            ev.llm_calls          = self._llm_calls
+            ev.tool_calls         = self._tool_calls
+            ev.tool_errors        = self._tool_errors
+            ev.tool_names         = list(self._tool_names)
+            ev.status             = self._status
+            ev.duration_ms        = round(duration_ms, 2)
+            ev.error              = self._error
+            ev.estimated_cost_usd = estimate_cost(
+                "", self._input_tokens, self._output_tokens,
+                self._cache_read_tokens, self._cache_write_tokens,
+            ) or None
+            self._client.fire_and_forget(ev.to_payload())
             return False  # do not suppress — let CancelledError propagate
         if exc_type is not None:
             self._status = "failed"
@@ -147,23 +105,24 @@ class _RunContext:
             self._status = "failed"
             self._error  = "Stream ended without TaskResult (possible cancellation)"
         duration_ms = (time.monotonic() - self._start_ms) * 1000
-        payload = _build_payload(
-            self._agent_id,
-            self._trace_id,
-            self._status,
-            duration_ms,
-            self._tool_calls,
-            self._tool_errors,
-            self._tool_names,
-            self._llm_calls,
-            self._input_tokens,
-            self._output_tokens,
-            self._cache_read_tokens,
-            self._cache_write_tokens,
-            None,
-            self._error,
-        )
-        self._client.fire_and_forget(payload)
+        ev = AgentEndEvent(agent_id=self._agent_id, platform="autogen")
+        ev.trace_id           = self._trace_id
+        ev.input_tokens       = self._input_tokens
+        ev.output_tokens      = self._output_tokens
+        ev.cache_read_tokens  = self._cache_read_tokens
+        ev.cache_write_tokens = self._cache_write_tokens
+        ev.llm_calls          = self._llm_calls
+        ev.tool_calls         = self._tool_calls
+        ev.tool_errors        = self._tool_errors
+        ev.tool_names         = list(self._tool_names)
+        ev.status             = self._status
+        ev.duration_ms        = round(duration_ms, 2)
+        ev.error              = self._error
+        ev.estimated_cost_usd = estimate_cost(
+            "", self._input_tokens, self._output_tokens,
+            self._cache_read_tokens, self._cache_write_tokens,
+        ) or None
+        self._client.fire_and_forget(ev.to_payload())
 
 
 class _TrackingStream:

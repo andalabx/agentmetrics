@@ -6,7 +6,7 @@ import uuid
 from typing import Any
 
 from agentmetrics.http_client import HttpClient
-from agentmetrics.tracker import _estimate_cost
+from agentmetrics_shared import AgentEndEvent, estimate_cost
 from crewai.utilities.events import crewai_event_bus
 from crewai.utilities.events.base_event_listener import BaseEventListener
 from crewai.utilities.events.types.crew_events import (
@@ -173,37 +173,22 @@ class AgentMetricsListener(BaseEventListener):
 
     def _emit(self, state: _KickoffState) -> None:
         duration_ms = (time.monotonic() - state.start_ms) * 1000
-        est = _estimate_cost(
-            state.model,
-            state.input_tokens, state.output_tokens,
-            state.cache_read_tokens, state.cache_write_tokens,
-        )
-        payload: dict[str, Any] = {
-            "event_id":                 str(uuid.uuid4()),
-            "trace_id":                 state.trace_id,
-            "agent_id":                 state.agent_id,
-            "platform":                 "crewai",
-            "event_name":               "agent_end",
-            "ts":                       int(time.time() * 1000),
-            "redaction_policy_version": "v1-strict",
-            "status":      state.status,
-            "duration_ms": round(duration_ms, 2),
-            "tool_calls":  state.tool_calls,
-            "tool_errors": state.tool_errors,
-            "tool_names":  list(state.tool_names),
-            "llm_calls":   state.llm_calls,
-            "input_tokens":       state.input_tokens,
-            "output_tokens":      state.output_tokens,
-            "cache_read_tokens":  None,   # CrewAI does not expose cache token breakdown
-            "cache_write_tokens": None,
-        }
-        if state.model:
-            payload["model"] = state.model
-        if state.error:
-            payload["error"] = state.error
-        if est is not None:
-            payload["estimated_cost_usd"] = est
-        self._client.fire_and_forget(payload)
+        ev = AgentEndEvent(agent_id=state.agent_id, platform="crewai")
+        ev.trace_id           = state.trace_id
+        ev.input_tokens       = state.input_tokens
+        ev.output_tokens      = state.output_tokens
+        ev.llm_calls          = state.llm_calls
+        ev.tool_calls         = state.tool_calls
+        ev.tool_errors        = state.tool_errors
+        ev.tool_names         = list(state.tool_names)
+        ev.status             = state.status
+        ev.duration_ms        = round(duration_ms, 2)
+        ev.error              = state.error
+        ev.model              = state.model
+        ev.estimated_cost_usd = estimate_cost(
+            state.model or "", state.input_tokens, state.output_tokens, 0, 0
+        ) or None
+        self._client.fire_and_forget(ev.to_payload())
 
     def flush(self, timeout: float = 10.0) -> None:
         self._client.flush(timeout=timeout)

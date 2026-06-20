@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
 from typing import Any
 from uuid import UUID
 
 from agentmetrics.http_client import HttpClient
-from agentmetrics.tracker import _estimate_cost
+from agentmetrics_shared import AgentEndEvent, estimate_cost
 from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
 
@@ -314,39 +313,25 @@ class AgentMetricsCallback(BaseCallbackHandler):
             self._parent_map.pop(k, None)
 
         duration_ms = (time.monotonic() - run.start_ms) * 1000
-        est = _estimate_cost(
-            run.model,
-            run.input_tokens, run.output_tokens,
+        ev = AgentEndEvent(agent_id=run.agent_id, platform="langchain")
+        ev.trace_id            = run_id
+        ev.input_tokens        = run.input_tokens
+        ev.output_tokens       = run.output_tokens
+        ev.cache_read_tokens   = run.cache_read_tokens
+        ev.cache_write_tokens  = run.cache_write_tokens
+        ev.llm_calls           = run.llm_calls
+        ev.tool_calls          = run.tool_calls
+        ev.tool_errors         = run.tool_errors
+        ev.tool_names          = list(run.tool_names)
+        ev.status              = run.status
+        ev.duration_ms         = round(duration_ms, 2)
+        ev.error               = run.error
+        ev.model               = run.model
+        ev.estimated_cost_usd  = estimate_cost(
+            run.model or "", run.input_tokens, run.output_tokens,
             run.cache_read_tokens, run.cache_write_tokens,
-        )
-        payload: dict[str, Any] = {
-            "event_id":                 str(uuid.uuid4()),
-            "trace_id":                 run_id,
-            "agent_id":                 run.agent_id,
-            "platform":                 "langchain",
-            "event_name":               "agent_end",
-            "ts":                       int(time.time() * 1000),
-            "redaction_policy_version": "v1-strict",
-            "status":      run.status,
-            "duration_ms": round(duration_ms, 2),
-            "tool_calls":  run.tool_calls,
-            "tool_errors": run.tool_errors,
-            "tool_names":  list(run.tool_names),
-            "llm_calls":   run.llm_calls,
-            "input_tokens":  run.input_tokens,
-            "output_tokens": run.output_tokens,
-        }
-        if run.model:
-            payload["model"] = run.model
-        if run.error:
-            payload["error"] = run.error
-        if run.cache_read_tokens:
-            payload["cache_read_tokens"] = run.cache_read_tokens
-        if run.cache_write_tokens:
-            payload["cache_write_tokens"] = run.cache_write_tokens
-        if est is not None:
-            payload["estimated_cost_usd"] = est
-        self._client.fire_and_forget(payload)
+        ) or None
+        self._client.fire_and_forget(ev.to_payload())
 
     def flush(self, timeout: float = 10.0) -> None:
         """Wait for all in-flight HTTP requests to complete."""
