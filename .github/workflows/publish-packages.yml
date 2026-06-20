@@ -1,4 +1,4 @@
-name: Publish Python packages to PyPI
+name: Publish packages to PyPI and npm
 
 on:
   release:
@@ -165,3 +165,105 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dists/packages/integrations/hermes/dist/
+
+  build-npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @agentmetrics/core build
+      - run: pnpm --filter agentmetrics build
+      - run: pnpm --filter agentmetrics-anthropic build
+      - run: pnpm --filter agentmetrics-langchain build
+      - run: pnpm --filter agentmetrics-openclaw build
+      - uses: actions/upload-artifact@v6
+        with:
+          name: npm-dists
+          path: |
+            packages/js/dist/
+            packages/integrations/anthropic-js/dist/
+            packages/integrations/langchain-js/dist/
+            packages/integrations/openclaw/dist/
+
+  publish-npm-agentmetrics:
+    needs: build-npm
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v7
+        with: { name: npm-dists, path: . }
+      - run: npm publish packages/js --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-npm-anthropic:
+    needs: build-npm
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v7
+        with: { name: npm-dists, path: . }
+      - run: npm publish packages/integrations/anthropic-js --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-npm-langchain:
+    needs: build-npm
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v7
+        with: { name: npm-dists, path: . }
+      - run: npm publish packages/integrations/langchain-js --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  publish-npm-openclaw:
+    needs: build-npm
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v7
+        with: { name: npm-dists, path: . }
+      - run: npm publish packages/integrations/openclaw --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
