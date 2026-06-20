@@ -5,8 +5,6 @@ Run with: pytest -m integration --api-url http://localhost:8099 --api-key am_xxx
 
 from __future__ import annotations
 
-import time
-
 import pytest
 
 from agentmetrics_hermes.config import AgentMetricsConfig

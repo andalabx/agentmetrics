@@ -11,8 +11,10 @@ from collections.abc import AsyncGenerator, Callable, Generator
 from contextvars import ContextVar
 from typing import Any, ClassVar
 
+from agentmetrics_shared import AgentEndEvent
+from agentmetrics_shared import estimate_cost as _shared_estimate_cost
+
 from agentmetrics.http_client import HttpClient
-from agentmetrics_shared import AgentEndEvent, estimate_cost as _shared_estimate_cost
 
 # SDK-07: Named constant for tool-loop detection threshold
 _TOOL_LOOP_THRESHOLD = 3  # consecutive identical tool calls marks run as failed
@@ -845,8 +847,10 @@ class Tracker:
             ev.llm_calls     = tok_acc.get("llm_calls", 0) or 0
             cr = tok_acc.get("cache_read_tokens", 0)
             cw = tok_acc.get("cache_write_tokens", 0)
-            if cr: ev.cache_read_tokens  = cr
-            if cw: ev.cache_write_tokens = cw
+            if cr:
+                ev.cache_read_tokens = cr
+            if cw:
+                ev.cache_write_tokens = cw
             ev.estimated_cost_usd = _shared_estimate_cost(
                 ev.model or "", ev.input_tokens, ev.output_tokens,
                 ev.cache_read_tokens, ev.cache_write_tokens,

@@ -183,9 +183,9 @@ def get_infra_correlation(
     """Correlate agent events with infra metrics for a given host in a time window."""
     org_id = str(org.id)
     try:
-        from app.models.event import Event
-
         from datetime import timedelta
+
+        from app.models.event import Event
         cutoff = datetime.now(UTC) - timedelta(hours=window_hours)
 
         # Agent runs for this host

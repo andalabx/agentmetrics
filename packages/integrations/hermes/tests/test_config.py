@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from agentmetrics_hermes.config import AgentMetricsConfig, _validate_endpoint

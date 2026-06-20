@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .config import AgentMetricsConfig
@@ -42,7 +42,7 @@ def cmd_flush(pipeline: EventPipeline) -> str:
 def cmd_tail(store: StateStore) -> str:
     """Show active sessions and runs."""
     lines = ["AgentMetrics — active sessions"]
-    with store._lock:  # noqa: SLF001 — CLI introspection only
+    with store._lock:
         sessions = dict(store._sessions)
         runs = dict(store._runs)
         active = dict(store._active_run)
@@ -79,7 +79,7 @@ def cmd_test(cfg: AgentMetricsConfig) -> str:
 
 def cmd_redaction_check(cfg: AgentMetricsConfig) -> str:
     """Show what the current redaction policy does to sample data."""
-    from .redact import RedactionMode, active_mode, redact_tool_name, scrub_secrets
+    from .redact import active_mode, redact_tool_name, scrub_secrets
 
     mode = active_mode(cfg)
     samples = [

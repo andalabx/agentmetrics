@@ -112,8 +112,9 @@ def _increment_pipeline_counter(org_id: str, agent_id: str, counter_col: str, am
         return
     if IS_SQLITE:
         return
-    from app.database import SessionLocal
     from sqlalchemy import text
+
+    from app.database import SessionLocal
     db = SessionLocal()
     try:
         db.execute(text(f"""

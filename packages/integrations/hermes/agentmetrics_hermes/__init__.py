@@ -70,9 +70,9 @@ _HOOK_NAMES = [
 ]
 
 
-def register(ctx: Any) -> None:  # noqa: ANN401 — ctx type is hermes_cli internal
+def register(ctx: Any) -> None:
     """Hermes plugin entry point. Called once by the gateway on startup."""
-    global _pipeline, _store, _cfg  # noqa: PLW0603 — intentional module-level state
+    global _pipeline, _store, _cfg
 
     cfg = AgentMetricsConfig.load()
 
@@ -108,7 +108,7 @@ def register(ctx: Any) -> None:  # noqa: ANN401 — ctx type is hermes_cli inter
         from .pipeline import QueueItem
 
         for event in recovered:
-            pipeline._queue.put_nowait(QueueItem(event=event))  # noqa: SLF001 — direct WAL recovery
+            pipeline._queue.put_nowait(QueueItem(event=event))
         pipeline.emit_audit("wal_recovery", {"recovered_count": len(recovered)})
 
     hooks = AgentMetricsHooks(cfg, pipeline, store)

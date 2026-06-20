@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -35,7 +35,7 @@ _FNV_OFFSET = 2166136261
 _FNV_PRIME = 16777619
 
 
-class RedactionMode(str, Enum):
+class RedactionMode(StrEnum):
     STRICT = "strict"
     MODERATE = "moderate"
     DEBUG = "debug"
@@ -122,12 +122,12 @@ def scrub_event_and_count(payload: dict[str, Any], mode: RedactionMode) -> tuple
     return result, total  # type: ignore[return-value]
 
 
-def _scrub_dict(obj: Any, mode: RedactionMode) -> Any:  # noqa: ANN401 — recursive Any is intentional
+def _scrub_dict(obj: Any, mode: RedactionMode) -> Any:
     result, _ = _scrub_dict_and_count(obj, mode)
     return result
 
 
-def _scrub_dict_and_count(obj: Any, mode: RedactionMode) -> tuple[Any, int]:  # noqa: ANN401
+def _scrub_dict_and_count(obj: Any, mode: RedactionMode) -> tuple[Any, int]:
     if isinstance(obj, str):
         return scrub_secrets_and_count(obj, mode)
     if isinstance(obj, dict):

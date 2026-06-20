@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from agentmetrics_hermes.config import AgentMetricsConfig
-from agentmetrics_hermes.client import AgentMetricsClient
 from agentmetrics_hermes.pipeline import EventPipeline
 from agentmetrics_hermes.state import StateStore
 from agentmetrics_hermes.wal import WriteAheadLog

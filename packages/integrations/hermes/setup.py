@@ -6,8 +6,8 @@ import os
 import shutil
 
 from setuptools import setup
-from setuptools.command.install import install
 from setuptools.command.develop import develop
+from setuptools.command.install import install
 
 
 def _install_plugin_files() -> None:

@@ -39,6 +39,7 @@ from .redact import (
     scrub_event_and_count,
 )
 from .schema import (
+    _hash_set,
     agent_end_to_payload,
     api_error_to_payload,
     audit_to_payload,
@@ -50,7 +51,6 @@ from .schema import (
     tool_end_to_payload,
     tool_start_to_payload,
 )
-from .schema import _hash_set  # noqa: PLC2701 — internal helper shared by hooks only
 from .state import StateStore
 
 logger = logging.getLogger(__name__)

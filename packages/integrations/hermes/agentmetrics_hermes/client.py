@@ -46,7 +46,7 @@ class AgentMetricsClient:
 
         req = urllib.request.Request(url, data=body, headers=headers, method="POST")
         try:
-            with urllib.request.urlopen(  # noqa: S310 — URL validated in config
+            with urllib.request.urlopen(
                 req, timeout=max(_CONNECT_TIMEOUT, _READ_TIMEOUT)
             ) as resp:
                 return resp.status, ""

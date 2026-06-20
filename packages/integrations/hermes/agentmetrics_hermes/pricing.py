@@ -6,8 +6,7 @@ from __future__ import annotations
 # official-docs snapshot.
 #
 # No fallback for unknown models — returns None rather than fabricating a number.
-
-from agentmetrics_shared.pricing import MODEL_PRICING, _SORTED_KEYS, _compute
+from agentmetrics_shared.pricing import _SORTED_KEYS, MODEL_PRICING, _compute
 
 
 def estimate_cost(

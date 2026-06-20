@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
-from agentmetrics_hermes.client import AgentMetricsClient, _MAX_PAYLOAD_BYTES
+from agentmetrics_hermes.client import AgentMetricsClient
 from agentmetrics_hermes.config import AgentMetricsConfig
 
 
