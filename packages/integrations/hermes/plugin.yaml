@@ -1,0 +1,18 @@
+name: agentmetrics
+version: "1.0.0"
+description: >
+  360-degree observability for every Hermes agent — sessions, runs, LLM calls,
+  tools, subagents, skills, memory, cron, gateway events, cost, and reliability.
+author: AndaLabX
+homepage: https://github.com/andalabx/agentmetrics
+
+hooks:
+  - on_session_start
+  - on_session_end
+  - pre_llm_call
+  - post_llm_call
+  - pre_api_request
+  - post_api_request
+  - api_request_error
+  - pre_tool_call
+  - post_tool_call
