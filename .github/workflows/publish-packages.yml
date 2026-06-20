@@ -196,74 +196,62 @@ jobs:
     needs: build-npm
     runs-on: ubuntu-latest
     environment: npm
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/js --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm publish packages/js --provenance --access public
 
   publish-npm-anthropic:
     needs: build-npm
     runs-on: ubuntu-latest
     environment: npm
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/integrations/anthropic-js --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm publish packages/integrations/anthropic-js --provenance --access public
 
   publish-npm-langchain:
     needs: build-npm
     runs-on: ubuntu-latest
     environment: npm
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/integrations/langchain-js --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm publish packages/integrations/langchain-js --provenance --access public
 
   publish-npm-openclaw:
     needs: build-npm
     runs-on: ubuntu-latest
     environment: npm
+    permissions:
+      id-token: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
-      - run: npm publish packages/integrations/openclaw --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: npm publish packages/integrations/openclaw --provenance --access public
