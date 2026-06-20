@@ -48,10 +48,37 @@ class MetricsHourly(Base):
     error_rate  = Column(Float, nullable=True)
     loop_count  = Column(Integer, default=0)
     created_at  = Column(DateTime(timezone=True), server_default=func.now())
+    duplicate_count     = Column(Integer, default=0)
+    wal_recovered_count = Column(Integer, default=0)
+    access_denied_count = Column(Integer, default=0)
+    dlq_alert_count     = Column(Integer, default=0)
 
     __table_args__ = (
         UniqueConstraint("org_id", "agent_id", "hour", name="ix_metrics_hourly_org_agent_hour"),
         Index("ix_metrics_hourly_org_hour", "org_id", "hour"),
+    )
+
+
+class InfraMetric(Base):
+    __tablename__ = "infra_metrics"
+
+    id           = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id       = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    host_id      = Column(String(255), nullable=False)
+    agent_id     = Column(String(255), nullable=True)
+    ts           = Column(DateTime(timezone=True), nullable=False)
+    received_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    cpu_pct      = Column(Float, nullable=True)
+    mem_used_mb  = Column(Float, nullable=True)
+    mem_total_mb = Column(Float, nullable=True)
+    disk_used_pct = Column(Float, nullable=True)
+    net_rx_kbps  = Column(Float, nullable=True)
+    net_tx_kbps  = Column(Float, nullable=True)
+    custom       = Column(JSON, nullable=True)
+
+    __table_args__ = (
+        Index("ix_infra_metrics_org_host_ts", "org_id", "host_id", "ts"),
+        Index("ix_infra_metrics_org_ts", "org_id", "ts"),
     )
 
 

@@ -50,6 +50,12 @@ class Event(Base):
     compactions = Column(Integer, nullable=True)
     resets = Column(Integer, nullable=True)
     loop_count = Column(Integer, nullable=True)
+    host_id               = Column(String(255), nullable=True)
+    workflow_id           = Column(String(255), nullable=True)
+    skill_name            = Column(String(255), nullable=True)
+    toolset               = Column(String(100), nullable=True)
+    secrets_blocked_count = Column(Integer, nullable=True)
+    pii_detected_count    = Column(Integer, nullable=True)
 
     __table_args__ = (
         Index("ix_events_org_agent_ts", "org_id", "agent_id", "timestamp"),
