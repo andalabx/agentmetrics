@@ -12,6 +12,7 @@ from contextvars import ContextVar
 from typing import Any, ClassVar
 
 from agentmetrics.http_client import HttpClient
+from agentmetrics_shared import AgentEndEvent, estimate_cost as _shared_estimate_cost
 
 # SDK-07: Named constant for tool-loop detection threshold
 _TOOL_LOOP_THRESHOLD = 3  # consecutive identical tool calls marks run as failed
@@ -817,68 +818,59 @@ class Tracker:
     ) -> None:
         if not self._batch:
             return
-        import time as _time
         loop_count = _count_loops(tool_calls)
-        tool_names = list({t["name"] for t in tool_calls})
-        tool_errors = sum(1 for t in tool_calls if t.get("status") == "failed")
-        payload: dict[str, Any] = {
-            # v2 identity fields
-            "event_id":                 str(uuid.uuid4()),
-            "trace_id":                 trace_id,
-            "agent_id":                 agent_id,
-            "platform":                 "python",
-            "event_name":               "agent_end",
-            "ts":                       int(_time.time() * 1000),
-            "redaction_policy_version": "v1-strict",
-            # run data
-            "status":       status,
-            "duration_ms":  round(duration_ms, 2),
-            "error":        error_msg,
-            "step_count":   len(steps),
-            "tool_calls":   len(tool_calls),
-            "tool_errors":  tool_errors,
-            "tool_names":   tool_names,
-        }
+
+        ev = AgentEndEvent(agent_id=agent_id, platform="python")
+        ev.trace_id   = trace_id
+        ev.status     = status
+        ev.duration_ms = round(duration_ms, 2)
+        ev.error       = error_msg
+        ev.step_count  = len(steps)
+        ev.tool_calls  = len(tool_calls)
+        ev.tool_errors = sum(1 for t in tool_calls if t.get("status") == "failed")
+        ev.tool_names  = list({t["name"] for t in tool_calls})
+
         if loop_count:
-            payload["loop_count"] = loop_count
-            payload["status"] = "failed"
+            ev.loop_count = loop_count
+            ev.status = "failed"
             if not error_msg:
-                payload["error"] = "Loop detected: repeated tool calls"
+                ev.error = "Loop detected: repeated tool calls"
         if parent_trace_id:
-            payload["parent_trace_id"] = parent_trace_id
-        if self._environment:
-            payload["environment"] = self._environment
+            ev.parent_trace_id = parent_trace_id
+
         if tok_acc:
-            model = tok_acc.get("model")
-            input_tok   = tok_acc.get("input_tokens", 0)
-            output_tok  = tok_acc.get("output_tokens", 0)
-            cr_tok      = tok_acc.get("cache_read_tokens", 0)
-            cw_tok      = tok_acc.get("cache_write_tokens", 0)
-            payload["model"]         = model
-            payload["input_tokens"]  = input_tok
-            payload["output_tokens"] = output_tok
-            if tok_acc.get("llm_calls"):
-                payload["llm_calls"] = tok_acc["llm_calls"]
-            if cr_tok:
-                payload["cache_read_tokens"] = cr_tok
-            if cw_tok:
-                payload["cache_write_tokens"] = cw_tok
-        metadata: dict[str, Any] = {}
+            ev.model         = tok_acc.get("model")
+            ev.input_tokens  = tok_acc.get("input_tokens", 0)
+            ev.output_tokens = tok_acc.get("output_tokens", 0)
+            ev.llm_calls     = tok_acc.get("llm_calls", 0) or 0
+            cr = tok_acc.get("cache_read_tokens", 0)
+            cw = tok_acc.get("cache_write_tokens", 0)
+            if cr: ev.cache_read_tokens  = cr
+            if cw: ev.cache_write_tokens = cw
+            ev.estimated_cost_usd = _shared_estimate_cost(
+                ev.model or "", ev.input_tokens, ev.output_tokens,
+                ev.cache_read_tokens, ev.cache_write_tokens,
+            ) or None
+
+        meta: dict[str, Any] = {}
+        if self._environment:
+            meta["environment"] = self._environment
         if steps:
-            metadata["steps"] = steps
+            meta["steps"] = steps
         if tool_calls:
-            metadata["tool_calls_detail"] = tool_calls
+            meta["tool_calls_detail"] = tool_calls
         if scores:
-            metadata["scores"] = scores
+            meta["scores"] = scores
         if extra_metadata:
-            metadata.update(extra_metadata)
-        if metadata:
-            payload["metadata"] = metadata
-        # XC-03: Include SDK version in every emitted payload
+            meta.update(extra_metadata)
+        if meta:
+            ev.metadata = meta
+
         from agentmetrics import __version__ as _SDK_VERSION
-        payload["sdk_version"] = _SDK_VERSION
+        ev.sdk_version = _SDK_VERSION
+
         # SEC-J02: Apply scrub function before sending
-        self._batch.enqueue(_apply_scrub(payload))
+        self._batch.enqueue(_apply_scrub(ev.to_payload()))
 
     @property
     def trace_id(self) -> str | None:

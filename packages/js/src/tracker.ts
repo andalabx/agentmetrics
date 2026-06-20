@@ -1,4 +1,6 @@
 import { HttpClient } from "./http-client";
+import type { AgentEndEvent } from "@agentmetrics/core";
+import { estimateCost } from "@agentmetrics/core";
 
 
 export interface AgentMetricsOptions {
@@ -338,7 +340,14 @@ export class AgentMetrics {
         const durationMs = _roundMs(performance.now() - start);
         const toolNames = [...new Set(ctx.tools.map((t) => t.name))];
         const toolErrors = ctx.tools.filter((t) => t.status === "failed").length;
-        const event: Record<string, unknown> = {
+        const est = estimateCost(
+          ctx.model,
+          ctx.inputTokens,
+          ctx.outputTokens,
+          ctx.cacheReadTokens,
+          ctx.cacheWriteTokens,
+        );
+        const event: AgentEndEvent = {
           // v2 identity fields
           event_id:                 _randomUUID(),
           trace_id:                 ctx.traceId,
@@ -350,19 +359,20 @@ export class AgentMetrics {
           // run data
           status,
           duration_ms:  durationMs,
-          error:        errorMsg,
-          step_count:   ctx.steps.length,
+          input_tokens:  ctx.inputTokens,
+          output_tokens: ctx.outputTokens,
           tool_calls:   ctx.tools.length,
           tool_errors:  toolErrors,
           tool_names:   toolNames,
+          ...(errorMsg         ? { error:              errorMsg             } : {}),
+          ...(ctx.steps.length ? { step_count:         ctx.steps.length     } : {}),
+          ...(parentCtx        ? { parent_trace_id:    parentCtx.traceId    } : {}),
+          ...(ctx.model        ? { model:              ctx.model            } : {}),
+          ...(ctx.cacheReadTokens  ? { cache_read_tokens:  ctx.cacheReadTokens  } : {}),
+          ...(ctx.cacheWriteTokens ? { cache_write_tokens: ctx.cacheWriteTokens } : {}),
+          ...(ctx.llmCalls     ? { llm_calls:          ctx.llmCalls         } : {}),
+          ...(est != null      ? { estimated_cost_usd: est                  } : {}),
         };
-        if (parentCtx) event["parent_trace_id"] = parentCtx.traceId;
-        if (ctx.model) event["model"] = ctx.model;
-        if (ctx.inputTokens) event["input_tokens"] = ctx.inputTokens;
-        if (ctx.outputTokens) event["output_tokens"] = ctx.outputTokens;
-        if (ctx.cacheReadTokens) event["cache_read_tokens"] = ctx.cacheReadTokens;
-        if (ctx.cacheWriteTokens) event["cache_write_tokens"] = ctx.cacheWriteTokens;
-        if (ctx.llmCalls) event["llm_calls"] = ctx.llmCalls;
         const meta: Record<string, unknown> = { ...(opts.metadata ?? {}) };
         if (ctx.steps.length) {
           meta["steps"] = ctx.steps.map((s) => ({
@@ -382,8 +392,8 @@ export class AgentMetrics {
           }));
         }
         if (Object.keys(ctx.scores).length) meta["scores"] = ctx.scores;
-        if (Object.keys(meta).length) event["metadata"] = meta;
-        self._enqueue(event);
+        if (Object.keys(meta).length) event.metadata = meta;
+        self._enqueue(event as unknown as Record<string, unknown>);
       }
     };
   }
