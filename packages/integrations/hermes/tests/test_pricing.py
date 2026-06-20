@@ -36,10 +36,9 @@ def test_zero_tokens_returns_zero() -> None:
 
 
 @pytest.mark.unit
-def test_unknown_model_fallback() -> None:
+def test_unknown_model_returns_none() -> None:
     cost = estimate_cost("some-future-model-xyz", input_tokens=1_000_000, output_tokens=1_000_000)
-    # Fallback: $1.00 input + $4.00 output = $5.00
-    assert abs(cost - 5.0) < 0.01
+    assert cost is None
 
 
 @pytest.mark.unit
@@ -52,7 +51,7 @@ def test_cost_override_takes_precedence() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("model", ["claude-opus-4-7", "gpt-4o-mini", "gemini-2.0-flash", "deepseek-v4"])
+@pytest.mark.parametrize("model", ["claude-opus-4-7", "gpt-4o-mini", "gemini-2.0-flash", "deepseek-chat"])
 def test_all_pricing_table_entries_positive(model: str) -> None:
     cost = estimate_cost(model, input_tokens=100_000, output_tokens=100_000)
     assert cost > 0

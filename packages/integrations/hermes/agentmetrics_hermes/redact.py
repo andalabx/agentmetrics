@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 _SECRET_PATTERNS: list[tuple[str, str]] = [
     (r"sk-[A-Za-z0-9\-_]{20,}", "[REDACTED]"),
     (r"am_[A-Za-z0-9\-_]{16,}", "[REDACTED]"),
-    # JWT-like tokens (two base64 segments separated by a dot)
-    (r"\bey[A-Za-z0-9\-_]{20,}\.[A-Za-z0-9\-_]{20,}", "[REDACTED]"),
+    # JWT-like tokens (two or more base64url segments separated by dots)
+    (r"\bey[A-Za-z0-9\-_]{8,}(?:\.[A-Za-z0-9\-_]{4,}){1,}", "[REDACTED]"),
     # Key-value patterns: api_key=<value>, password: <value>, etc.
     (
         r"(?i)(?:api[-_]?key|apikey|api[-_]?token|access[-_]?token|"
