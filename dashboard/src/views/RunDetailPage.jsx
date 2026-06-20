@@ -77,6 +77,61 @@ function ExecutionSummary({ run }) {
   );
 }
 
+function PlatformDetails({ run }) {
+  if (!run.platform || run.platform === 'python') return null;
+
+  const sections = {
+    hermes: [
+      { label: 'Skills loaded',      value: run.skills_loaded_count },
+      { label: 'Memory writes',      value: run.memory_writes_count },
+      { label: 'Session searches',   value: run.session_search_calls },
+      { label: 'Delegation depth',   value: run.delegation_depth },
+      { label: 'Secrets blocked',    value: run.secrets_blocked_count },
+      { label: 'PII detected',       value: run.pii_detected_count },
+    ].filter(s => s.value != null && s.value > 0),
+
+    langchain: [
+      { label: 'Chain steps', value: run.metadata?.steps?.length },
+    ].filter(s => s.value != null && s.value > 0),
+
+    crewai: [
+      { label: 'Crew', value: run.metadata?.crew_name },
+    ].filter(s => s.value != null),
+
+    anthropic: [
+      { label: 'Session', value: run.session_id },
+    ].filter(s => s.value != null),
+  };
+
+  const items = sections[run.platform] || [];
+  if (items.length === 0) return null;
+
+  const platformLabels = {
+    hermes: 'Hermes',
+    langchain: 'LangChain',
+    crewai: 'CrewAI',
+    anthropic: 'Anthropic',
+    autogen: 'AutoGen',
+    llamaindex: 'LlamaIndex',
+    'openai-agents': 'OpenAI Agents',
+  };
+
+  return (
+    <div className="rounded-[28px] border border-[var(--border)] bg-surface p-5 shadow-card">
+      <p className="text-[10px] uppercase tracking-[0.2em] text-t2 mb-1">Integration details</p>
+      <h3 className="text-sm font-bold text-t1 mb-4">{platformLabels[run.platform] || run.platform}</h3>
+      <div>
+        {items.map(({ label, value }) => (
+          <div key={label} className="flex items-start justify-between gap-4 py-2.5 border-b border-[var(--border)] last:border-0">
+            <span className="text-xs text-t2 shrink-0">{label}</span>
+            <span className="text-xs font-medium text-t1 text-right break-all font-mono">{String(value)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function TokenBar({ label, value, total, color }) {
   if (!value || !total) return null;
   const pct = Math.min((value / total) * 100, 100);
@@ -207,6 +262,9 @@ export default function RunDetailPage({ traceId: traceIdProp }) {
             {/* Execution summary */}
             <ExecutionSummary run={run} />
 
+            {/* Platform-specific integration details */}
+            <PlatformDetails run={run} />
+
             {/* Cost reconciliation */}
             {run.estimated_cost_usd != null && (
               <div className="rounded-[28px] border border-[var(--border)] bg-surface p-5 shadow-card">
@@ -277,6 +335,10 @@ export default function RunDetailPage({ traceId: traceIdProp }) {
                   </div>
                 )}
                 <MetaRow label="Platform"           value={run.platform} />
+                <MetaRow label="Host"               value={run.host_id}                 mono />
+                <MetaRow label="Workflow"           value={run.workflow_id}             mono />
+                <MetaRow label="Skill"              value={run.skill_name} />
+                <MetaRow label="Toolset"            value={run.toolset} />
                 <MetaRow label="Model"              value={run.model}                   mono />
                 <MetaRow label="Compactions"        value={run.compactions} />
                 <MetaRow label="Resets"             value={run.resets} />
