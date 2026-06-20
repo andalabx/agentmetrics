@@ -3,6 +3,7 @@ name: Publish packages to PyPI and npm
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -171,11 +172,9 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @agentmetrics/core build
@@ -202,7 +201,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
@@ -218,7 +217,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
@@ -234,7 +233,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
@@ -250,7 +249,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
       - uses: actions/download-artifact@v7
         with: { name: npm-dists, path: . }
