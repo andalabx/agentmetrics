@@ -53,8 +53,18 @@ def _retention_since(org_id: str, db: Session) -> datetime:
     return datetime.min.replace(tzinfo=UTC)
 
 
-def get_agents_summary(org_id: str, db: Session, limit: int = 200, offset: int = 0) -> list[AgentSummary]:
+def get_agents_summary(
+    org_id: str, db: Session, limit: int = 200, offset: int = 0, platform: str | None = None,
+) -> list[AgentSummary]:
     since = _retention_since(org_id, db)
+    filters = [
+        Event.org_id == org_id,
+        ~Event.agent_id.in_(_EXCLUDED_AGENTS),
+        Event.timestamp >= since,
+        _NOT_SESSION_METRICS,
+    ]
+    if platform:
+        filters.append(json_extract_text(Event.run_metadata, "platform") == platform)
     rows = (
         db.query(
             Event.agent_id,
@@ -65,12 +75,7 @@ def get_agents_summary(org_id: str, db: Session, limit: int = 200, offset: int =
             func.avg(Event.cost_usd).label("avg_cost"),
             func.max(Event.timestamp).label("last_seen"),
         )
-        .filter(
-            Event.org_id == org_id,
-            ~Event.agent_id.in_(_EXCLUDED_AGENTS),
-            Event.timestamp >= since,
-            _NOT_SESSION_METRICS,
-        )
+        .filter(*filters)
         .group_by(Event.agent_id)
         .order_by(func.sum(Event.cost_usd).desc())
         .offset(offset)
@@ -127,24 +132,28 @@ def _event_to_run(e: Event) -> RecentRun:
 
 
 def get_agent_runs(
-    org_id: str, agent_id: str, db: Session, limit: int = 50, offset: int = 0
+    org_id: str,
+    agent_id: str,
+    db: Session,
+    limit: int = 50,
+    offset: int = 0,
+    platform: str | None = None,
 ) -> tuple[list[RecentRun], int]:
     since = _retention_since(org_id, db)
-    total = db.query(func.count(Event.id)).filter(
+    filters = [
         Event.org_id == org_id,
         Event.agent_id == agent_id,
         Event.timestamp >= since,
         _NOT_SESSION_METRICS,
-    ).scalar() or 0
+    ]
+    if platform:
+        filters.append(json_extract_text(Event.run_metadata, "platform") == platform)
+
+    total = db.query(func.count(Event.id)).filter(*filters).scalar() or 0
 
     events = (
         db.query(Event)
-        .filter(
-            Event.org_id == org_id,
-            Event.agent_id == agent_id,
-            Event.timestamp >= since,
-            _NOT_SESSION_METRICS,
-        )
+        .filter(*filters)
         .order_by(Event.timestamp.desc())
         .limit(limit)
         .offset(offset)

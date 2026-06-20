@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
@@ -7,13 +8,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.rate_limit import check_rate_limit
-from app.database import get_db
+from app.database import IS_SQLITE, get_db
 from app.deps import get_current_org_from_api_key
 from app.models.event import Event
 from app.models.organization import Organization
 from app.schemas.event import BatchEventCreate, BatchEventResponse, EventCreate, EventResponse
 
 router = APIRouter(prefix="/events", tags=["events"])
+
+_logger = logging.getLogger("agentmetrics")
+
 
 def _build_event(org_id: uuid.UUID, body: EventCreate) -> Event:
     cost = body.cost_usd
@@ -75,7 +79,14 @@ def _build_event(org_id: uuid.UUID, body: EventCreate) -> Event:
         compactions=body.compactions,
         resets=body.resets,
         loop_count=body.loop_count,
+        host_id=body.host_id,
+        workflow_id=body.workflow_id,
+        skill_name=body.skill_name,
+        toolset=body.toolset,
+        secrets_blocked_count=body.secrets_blocked_count,
+        pii_detected_count=body.pii_detected_count,
     )
+
 
 def _run_realtime_alerts(org_id: str) -> None:
     """Background task: evaluate alert rules using a fresh DB session."""
@@ -86,6 +97,58 @@ def _run_realtime_alerts(org_id: str) -> None:
         evaluate_alerts_for_org(org_id, db)
     finally:
         db.close()
+
+
+_ALLOWED_COUNTER_COLS = frozenset({
+    "wal_recovered_count", "access_denied_count",
+    "dlq_alert_count", "duplicate_count",
+})
+
+
+def _increment_pipeline_counter(org_id: str, agent_id: str, counter_col: str, amount: int = 1) -> None:
+    """Background task: upsert a pipeline counter column in metrics_hourly."""
+    if counter_col not in _ALLOWED_COUNTER_COLS:
+        _logger.error("[events] _increment_pipeline_counter: rejected unknown column %r", counter_col)
+        return
+    if IS_SQLITE:
+        return
+    from app.database import SessionLocal
+    from sqlalchemy import text
+    db = SessionLocal()
+    try:
+        db.execute(text(f"""
+            INSERT INTO metrics_hourly (id, org_id, agent_id, hour, {counter_col})
+            VALUES (gen_random_uuid(), :org_id, :agent_id, date_trunc('hour', now()), :amount)
+            ON CONFLICT (org_id, agent_id, hour)
+            DO UPDATE SET {counter_col} = COALESCE(metrics_hourly.{counter_col}, 0) + :amount
+        """), {"org_id": org_id, "agent_id": agent_id, "amount": amount})
+        db.commit()
+    except Exception as exc:
+        _logger.warning("[events] _increment_pipeline_counter failed for %s: %s", counter_col, exc)
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _track_audit_event(org_id: str, agent_id: str, event_name: str | None, metadata: dict | None) -> None:
+    """Background task: track audit event types into metrics_hourly pipeline counters."""
+    if not event_name or not event_name.startswith("audit_"):
+        return
+    if IS_SQLITE:
+        return
+    if event_name == "audit_wal_recovery":
+        amount = 1
+        if metadata:
+            try:
+                amount = int(metadata.get("recovered_count", 1)) or 1
+            except (TypeError, ValueError):
+                amount = 1
+        _increment_pipeline_counter(org_id, agent_id, "wal_recovered_count", amount)
+    elif event_name == "audit_access_denied":
+        _increment_pipeline_counter(org_id, agent_id, "access_denied_count", 1)
+    elif event_name == "audit_dlq_alert":
+        _increment_pipeline_counter(org_id, agent_id, "dlq_alert_count", 1)
+
 
 @router.post("", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
 def ingest_event(
@@ -113,8 +176,17 @@ def ingest_event(
     db.refresh(event)
 
     background_tasks.add_task(_run_realtime_alerts, str(org.id))
+    if body.event_name and body.event_name.startswith("audit_"):
+        background_tasks.add_task(
+            _track_audit_event,
+            str(org.id),
+            body.agent_id,
+            body.event_name,
+            body.metadata,
+        )
 
     return EventResponse(status="accepted", event_id=str(event.id))
+
 
 @router.post("/batch", response_model=BatchEventResponse, status_code=status.HTTP_201_CREATED)
 def ingest_events_batch(
@@ -125,9 +197,6 @@ def ingest_events_batch(
     db: Session = Depends(get_db),
 ) -> BatchEventResponse:
     """Accept up to 100 events in a single request. Partial success is allowed."""
-    import logging
-    _logger = logging.getLogger("agentmetrics")
-
     check_rate_limit(str(org.id), cost=len(body.events))
 
     incoming_trace_ids = [item.trace_id for item in body.events if item.trace_id]
@@ -146,7 +215,22 @@ def ingest_events_batch(
     for item in body.events:
         if item.trace_id and item.trace_id in existing_trace_ids:
             accepted += 1
+            background_tasks.add_task(
+                _increment_pipeline_counter,
+                str(org.id),
+                item.agent_id,
+                "duplicate_count",
+                1,
+            )
             continue
+        if item.event_name and item.event_name.startswith("audit_"):
+            background_tasks.add_task(
+                _track_audit_event,
+                str(org.id),
+                item.agent_id,
+                item.event_name,
+                item.metadata,
+            )
         sp = db.begin_nested()
         try:
             event = _build_event(org.id, item)

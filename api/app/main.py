@@ -4,7 +4,8 @@ import gzip
 import logging
 import sys
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 
 from alembic import command
 from alembic.config import Config
@@ -23,6 +24,7 @@ from app.routers import (
     auth,
     events,
     fleet,
+    infra,
     recommendations,
     runs,
     slo,
@@ -103,11 +105,53 @@ def _configure_logging() -> None:
     logging.getLogger("uvicorn.access").propagate = False  # we log requests ourselves
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
 
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    _configure_logging()
+    logger.info("[startup] ENVIRONMENT=%s", settings.ENVIRONMENT)
+
+    if getattr(settings, "bind_host", "127.0.0.1") == "0.0.0.0":
+        logger.warning(
+            "AgentMetrics API is bound to 0.0.0.0. Ensure this port is not publicly "
+            "accessible. For internet-facing deployments, add authentication."
+        )
+    from app.database import IS_SQLITE, Base, engine
+    if IS_SQLITE:
+        import app.models.event
+        import app.models.metrics
+        import app.models.organization  # noqa: F401
+        Base.metadata.create_all(bind=engine)
+        logger.info("[startup] SQLite schema created")
+    else:
+        try:
+            alembic_cfg = Config("alembic.ini")
+            command.upgrade(alembic_cfg, "head")
+        except Exception as e:
+            logger.warning("[startup] Migration warning: %s", e)
+
+    try:
+        from app.database import SessionLocal
+        from app.services.aggregation_service import backfill_missing_hours
+        db = SessionLocal()
+        backfill_missing_hours(db)
+        db.close()
+    except Exception as e:
+        logger.warning("[startup] Backfill warning (non-fatal): %s", e)
+
+    _provision_default_org()
+    start_worker()
+
+    yield
+
+    stop_worker()
+
+
 app = FastAPI(
     title="AgentMetrics API",
     description="Real-time cost visibility & optimization for AI agents.",
     version="1.0.0",
     docs_url="/docs",
+    lifespan=lifespan,
 )
 
 # CORS
@@ -123,48 +167,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(GzipRequestMiddleware)
-
-
-@app.on_event("startup")
-def run_migrations() -> None:
-    """Run alembic migrations on startup - safe because alembic is idempotent."""
-    _configure_logging()
-    logger.info("[startup] ENVIRONMENT=%s", settings.ENVIRONMENT)
-
-    if getattr(settings, "bind_host", "127.0.0.1") == "0.0.0.0":
-        logger.warning(
-            "AgentMetrics API is bound to 0.0.0.0. Ensure this port is not publicly "
-            "accessible. For internet-facing deployments, add authentication."
-        )
-    from app.database import IS_SQLITE, Base, engine
-    if IS_SQLITE:
-        # Import all models so metadata is populated before create_all
-        import app.models.event
-        import app.models.metrics
-        import app.models.organization  # noqa: F401
-        Base.metadata.create_all(bind=engine)
-        logger.info("[startup] SQLite schema created")
-    else:
-        try:
-            alembic_cfg = Config("alembic.ini")
-            command.upgrade(alembic_cfg, "head")
-        except Exception as e:
-            logger.warning("[startup] Migration warning: %s", e)
-
-    # Backfill any missing hourly aggregation rows from the last 48 hours
-    try:
-        from app.database import SessionLocal
-        from app.services.aggregation_service import backfill_missing_hours
-        db = SessionLocal()
-        backfill_missing_hours(db)
-        db.close()
-    except Exception as e:
-        logger.warning("[startup] Backfill warning (non-fatal): %s", e)
-
-    # First-run: create default org and print SDK key to stderr
-    _provision_default_org()
-
-    start_worker()
 
 
 def _provision_default_org() -> None:
@@ -234,11 +236,6 @@ def _print_key_banner(raw_key: str) -> None:
     print(f"{sep}\n", file=sys.stderr, flush=True)
 
 
-@app.on_event("shutdown")
-def shutdown_worker() -> None:
-    stop_worker()
-
-
 @app.middleware("http")
 async def access_log(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
     start = time.perf_counter()
@@ -269,6 +266,7 @@ app.include_router(fleet.router, prefix="/v1")
 app.include_router(runs.router, prefix="/v1")
 app.include_router(slo.router, prefix="/v1")
 app.include_router(audit.router, prefix="/v1")
+app.include_router(infra.router, prefix="/v1")
 
 
 @app.get("/health")

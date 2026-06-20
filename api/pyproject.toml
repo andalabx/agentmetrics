@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentmetrics-server"
-version = "0.1.0"
+version = "0.2.0"
 description = "AgentMetrics - self-hosted AI agent observability server"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -23,6 +23,7 @@ dependencies = [
     "email-validator==2.1.1",
     "APScheduler==3.10.4",
     "requests==2.32.3",
+    "agentmetrics-shared>=0.2.0",
     # PostgreSQL (optional - not needed for SQLite)
     # "psycopg2-binary>=2.9.9",
 ]
@@ -34,6 +35,9 @@ agentmetrics-server = "cli:serve"
 
 [tool.uv]
 exclude-newer = "7 days"
+
+[tool.uv.sources]
+agentmetrics-shared = { workspace = true }
 
 [tool.hatch.build.targets.wheel]
 include = [

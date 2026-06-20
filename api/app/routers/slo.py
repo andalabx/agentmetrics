@@ -101,6 +101,55 @@ def get_slo(
                 latest_at = latest_at.replace(tzinfo=UTC)
             freshness_seconds = int((now_utc - latest_at).total_seconds())
 
+        # --- pipeline: freshness ---
+        fresh = None
+        try:
+            fresh = db.execute(text("""
+                SELECT
+                  PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY freshness_ms) FILTER (WHERE cls = 'activity') AS p50_activity_ms,
+                  PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY freshness_ms) FILTER (WHERE cls = 'activity') AS p99_activity_ms,
+                  PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY freshness_ms) FILTER (WHERE cls = 'summary')  AS p99_summary_ms
+                FROM (
+                  SELECT
+                    GREATEST(0, EXTRACT(EPOCH FROM timestamp) * 1000 - (run_metadata->>'ts')::bigint) AS freshness_ms,
+                    CASE WHEN COALESCE(run_metadata->>'event_name','') IN ('agent_end','session_metrics') THEN 'summary' ELSE 'activity' END AS cls
+                  FROM events
+                  WHERE org_id = :org_id
+                    AND timestamp >= now() - (:wh * INTERVAL '1 hour')
+                    AND run_metadata->>'ts' IS NOT NULL
+                    AND COALESCE(run_metadata->>'event_name','') NOT LIKE 'audit_%'
+                ) sub
+            """), {"org_id": org_id, "wh": window_hours}).fetchone()
+        except Exception:
+            fresh = None
+
+        # --- pipeline: audit counts ---
+        audit = None
+        try:
+            audit = db.execute(text("""
+                SELECT
+                  COUNT(*) FILTER (WHERE run_metadata->>'event_name' = 'audit_access_denied')   AS access_denied_count,
+                  COALESCE(SUM(CASE WHEN run_metadata->>'event_name' = 'audit_wal_recovery'
+                    THEN COALESCE((run_metadata->'metadata'->>'recovered_count')::int, 0) ELSE 0 END), 0) AS wal_recovered_count,
+                  COUNT(*) FILTER (WHERE run_metadata->>'event_name' = 'audit_dlq_alert')        AS dlq_alert_count,
+                  COUNT(*) FILTER (WHERE run_metadata->>'event_name' = 'audit_redaction_change') AS redaction_changes
+                FROM events
+                WHERE org_id = :org_id AND timestamp >= now() - (:wh * INTERVAL '1 hour')
+            """), {"org_id": org_id, "wh": window_hours}).fetchone()
+        except Exception:
+            audit = None
+
+        # --- pipeline: duplicate count ---
+        dup_count = 0
+        try:
+            dup_row = db.execute(text("""
+                SELECT COALESCE(SUM(duplicate_count), 0) FROM metrics_hourly
+                WHERE org_id = :org_id AND hour >= now() - (:wh * INTERVAL '1 hour')
+            """), {"org_id": org_id, "wh": window_hours}).fetchone()
+            dup_count = int(dup_row[0] or 0) if dup_row else 0
+        except Exception:
+            dup_count = 0
+
         result = {
             "window_hours":   window_hours,
             "generated_at":   now_utc.isoformat(),
@@ -141,6 +190,23 @@ def get_slo(
                 }
                 for row in trend_rows
             ],
+        }
+        result["pipeline"] = {
+            "ingest": {
+                "access_denied_count":  int(audit[0] or 0) if audit else 0,
+                "wal_recovered_count":  int(audit[1] or 0) if audit else 0,
+                "dlq_alert_count":      int(audit[2] or 0) if audit else 0,
+                "redaction_changes":    int(audit[3] or 0) if audit else 0,
+                "duplicate_count":      int(dup_count or 0),
+                "ingest_success_rate":  round(1.0 - (int(audit[0] or 0) / max(total, 1)), 6) if (total > 0 and audit) else None,
+            },
+            "freshness": {
+                "p50_activity_ms":  round(float(fresh[0]), 1) if fresh and fresh[0] is not None else None,
+                "p99_activity_ms":  round(float(fresh[1]), 1) if fresh and fresh[1] is not None else None,
+                "p99_summary_ms":   round(float(fresh[2]), 1) if fresh and fresh[2] is not None else None,
+                "slo_activity_met": (float(fresh[1]) <= 5000)  if fresh and fresh[1] is not None else None,
+                "slo_summary_met":  (float(fresh[2]) <= 30000) if fresh and fresh[2] is not None else None,
+            },
         }
         return result
 

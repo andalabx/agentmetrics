@@ -7,7 +7,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.orm import Session
@@ -281,3 +281,113 @@ def get_week_comparison(
     except Exception:
         db.rollback()
         return {"current": {}, "previous": {}, "delta": {}}
+
+
+def _stats_by_dimension(
+    field: str,
+    window_hours: int,
+    org: Organization,
+    db: Session,
+) -> dict[str, Any]:
+    """Shared implementation for all by-dimension stat endpoints."""
+    org_id = str(org.id)
+    try:
+        if IS_SQLITE:
+            import uuid as _uuid
+            from datetime import timedelta
+
+            from sqlalchemy import case, func
+
+            from app.models.event import Event as _Event
+
+            org_uuid = _uuid.UUID(org_id) if isinstance(org_id, str) else org_id
+            cutoff = datetime.now(UTC) - timedelta(hours=window_hours)
+            dim_col = getattr(_Event, field)
+            rows = (
+                db.query(
+                    dim_col.label("dim"),
+                    func.count(_Event.id).label("runs"),
+                    func.coalesce(func.sum(_Event.cost_usd), 0).label("cost_usd"),
+                    func.avg(_Event.duration_ms).label("avg_duration_ms"),
+                    func.sum(case((_Event.status == "failed", 1), else_=0)).label("failed_runs"),
+                )
+                .filter(_Event.org_id == org_uuid, _Event.timestamp >= cutoff, dim_col.isnot(None))
+                .group_by(dim_col)
+                .order_by(func.coalesce(func.sum(_Event.cost_usd), 0).desc())
+                .limit(100)
+                .all()
+            )
+            items = [
+                {
+                    "name": str(r.dim),
+                    "runs": int(r.runs),
+                    "cost_usd": float(r.cost_usd),
+                    "avg_duration_ms": float(r.avg_duration_ms) if r.avg_duration_ms is not None else None,
+                    "failed_runs": int(r.failed_runs),
+                }
+                for r in rows
+            ]
+        else:
+            # field is always one of the four hardcoded values — safe to interpolate
+            rows = db.execute(text(f"""
+                SELECT {field} AS dim, COUNT(*) AS runs,
+                       COALESCE(SUM(cost_usd),0) AS cost_usd,
+                       AVG(duration_ms) AS avg_duration_ms,
+                       COUNT(*) FILTER (WHERE status='failed') AS failed_runs
+                FROM events
+                WHERE org_id=:org_id
+                  AND timestamp >= now() - (:wh * INTERVAL '1 hour')
+                  AND {field} IS NOT NULL
+                GROUP BY {field} ORDER BY cost_usd DESC LIMIT 100
+            """), {"org_id": org_id, "wh": window_hours}).fetchall()
+            items = [
+                {
+                    "name": str(r[0]),
+                    "runs": int(r[1]),
+                    "cost_usd": float(r[2]),
+                    "avg_duration_ms": float(r[3]) if r[3] is not None else None,
+                    "failed_runs": int(r[4]),
+                }
+                for r in rows
+            ]
+        return {"dimension_name": field, "window_hours": window_hours, "items": items}
+    except Exception:
+        db.rollback()
+        logger.exception("[stats] by-%s failed for org %s", field, org_id)
+        return {"dimension_name": field, "window_hours": window_hours, "items": []}
+
+
+@router.get("/by-workflow")
+def get_stats_by_workflow(
+    window_hours: int = Query(default=24, ge=1, le=720),
+    org: Organization = Depends(get_current_org_from_jwt),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return _stats_by_dimension("workflow_id", window_hours, org, db)
+
+
+@router.get("/by-skill")
+def get_stats_by_skill(
+    window_hours: int = Query(default=24, ge=1, le=720),
+    org: Organization = Depends(get_current_org_from_jwt),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return _stats_by_dimension("skill_name", window_hours, org, db)
+
+
+@router.get("/by-toolset")
+def get_stats_by_toolset(
+    window_hours: int = Query(default=24, ge=1, le=720),
+    org: Organization = Depends(get_current_org_from_jwt),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return _stats_by_dimension("toolset", window_hours, org, db)
+
+
+@router.get("/by-host")
+def get_stats_by_host(
+    window_hours: int = Query(default=24, ge=1, le=720),
+    org: Organization = Depends(get_current_org_from_jwt),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    return _stats_by_dimension("host_id", window_hours, org, db)

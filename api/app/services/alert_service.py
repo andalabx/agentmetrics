@@ -37,6 +37,12 @@ _METRIC_COLUMN = {
     "p95_latency":  "p95_duration_ms",
     "p99_latency":  "p99_duration_ms",
     "total_cost":   "total_cost_usd",
+    # phase 3 pipeline counters
+    "duplicate_count":      "duplicate_count",
+    "wal_recovered_count":  "wal_recovered_count",
+    "access_denied_count":  "access_denied_count",
+    "dlq_alert_count":      "dlq_alert_count",
+    "secrets_blocked_count": None,  # raw events only
 }
 
 # Both storage forms ("gt") and symbol forms (">") are accepted
@@ -116,7 +122,7 @@ def _evaluate_rule(db: Session, rule: dict) -> None:
     actual_value = _query_metrics_hourly(db, metric_col, params, window_hours)
 
     # Fall back to raw events if metrics_hourly is empty
-    if actual_value is None and rule["metric"] in ("error_rate", "cost_usd", "run_count", "loop_count"):
+    if actual_value is None and rule["metric"] in ("error_rate", "cost_usd", "run_count", "loop_count", "secrets_blocked_count"):
         actual_value = _query_events_fallback(db, rule["metric"], params, window_hours)
 
     if actual_value is None:
@@ -225,6 +231,16 @@ def _query_events_fallback(
                 WHERE org_id = :org_id
                   AND (:agent_id_filter IS NULL OR agent_id = :agent_id_filter)
                   AND timestamp >= now() - (:window_hours * INTERVAL '1 hour')
+                  {_nsm}
+            """), base_params).fetchone()
+        elif metric == "secrets_blocked_count":
+            row = db.execute(text(f"""
+                SELECT COALESCE(SUM(secrets_blocked_count), 0)
+                FROM events
+                WHERE org_id = :org_id
+                  AND (:agent_id_filter IS NULL OR agent_id = :agent_id_filter)
+                  AND timestamp >= now() - (:window_hours * INTERVAL '1 hour')
+                  AND secrets_blocked_count IS NOT NULL
                   {_nsm}
             """), base_params).fetchone()
         else:

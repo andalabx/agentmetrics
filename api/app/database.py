@@ -1,9 +1,19 @@
+import datetime
+import sqlite3
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.config import settings
 
 IS_SQLITE = settings.DATABASE_URL.startswith("sqlite")
+
+# Python 3.12 deprecated the default sqlite3 datetime adapter. Register
+# explicit adapters so SQLAlchemy doesn't trigger the DeprecationWarning.
+sqlite3.register_adapter(datetime.datetime, lambda v: v.isoformat())
+sqlite3.register_adapter(datetime.date, lambda v: v.isoformat())
+sqlite3.register_converter("DATETIME", lambda v: datetime.datetime.fromisoformat(v.decode()))
+sqlite3.register_converter("DATE", lambda v: datetime.date.fromisoformat(v.decode()))
 
 _engine_kwargs: dict = {}
 if IS_SQLITE:

@@ -20,10 +20,11 @@ class RenameAgentRequest(BaseModel):
 def list_agents(
     limit: int = Query(default=200, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
+    platform: str | None = Query(default=None),
     org: Organization = Depends(get_current_org_from_jwt),
     db: Session = Depends(get_db),
 ):
-    result = [a.model_dump() for a in get_agents_summary(org.id, db, limit=limit, offset=offset)]
+    result = [a.model_dump() for a in get_agents_summary(org.id, db, limit=limit, offset=offset, platform=platform)]
     return result
 
 @router.get("/names", response_model=dict[str, str])
@@ -84,11 +85,12 @@ def list_agent_runs(
     agent_id: str,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    platform: str | None = Query(default=None),
     org: Organization = Depends(get_current_org_from_jwt),
     db: Session = Depends(get_db),
 ):
     from app.services.agent_service import get_agent_runs
-    runs, total = get_agent_runs(org.id, agent_id, db, limit=limit, offset=offset)
+    runs, total = get_agent_runs(org.id, agent_id, db, limit=limit, offset=offset, platform=platform)
     result = {"runs": [r.model_dump() for r in runs], "total": total, "limit": limit, "offset": offset}
     return result
 
