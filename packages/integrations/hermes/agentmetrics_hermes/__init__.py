@@ -30,7 +30,7 @@ from .pipeline import EventPipeline
 from .state import StateStore
 from .wal import WriteAheadLog
 
-__version__ = "0.1.0"
+__version__ = "0.2.1"
 __all__ = ["register"]
 
 logger = logging.getLogger(__name__)
