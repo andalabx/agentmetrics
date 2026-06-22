@@ -113,7 +113,7 @@ class AgentMetricsHooks:
     # ── Session lifecycle ─────────────────────────────────────────────────────
 
     def on_session_start(self, **kwargs: Any) -> None:
-        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or "unknown")
+        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or kwargs.get("task_id") or "unknown")
         agent_id = str(kwargs.get("agent_id") or "hermes")
         mode = active_mode(self._cfg)
 
@@ -128,7 +128,7 @@ class AgentMetricsHooks:
         self._enqueue(session_start_to_payload(ev), mode)
 
     def on_session_end(self, **kwargs: Any) -> None:
-        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or "unknown")
+        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or kwargs.get("task_id") or "unknown")
         mode = active_mode(self._cfg)
 
         # If a run is still active when the session ends, close it out.
@@ -166,7 +166,7 @@ class AgentMetricsHooks:
     # ── LLM call tracking ─────────────────────────────────────────────────────
 
     def pre_llm_call(self, **kwargs: Any) -> None:
-        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or "unknown")
+        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or kwargs.get("task_id") or "unknown")
         # Ensure a run exists for this turn — creates one if needed.
         self._store.get_or_create_run(session_key)
 
@@ -176,7 +176,7 @@ class AgentMetricsHooks:
         pass
 
     def pre_api_request(self, **kwargs: Any) -> None:
-        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or "unknown")
+        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or kwargs.get("task_id") or "unknown")
         model = str(kwargs.get("model") or "")
         provider = str(kwargs.get("provider") or _infer_provider(model))
         images = int(kwargs.get("images_count") or 0)
@@ -211,7 +211,7 @@ class AgentMetricsHooks:
         self._enqueue(llm_input_to_payload(ev), mode)
 
     def post_api_request(self, **kwargs: Any) -> None:
-        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or "unknown")
+        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or kwargs.get("task_id") or "unknown")
         model = str(kwargs.get("model") or "")
         provider = str(kwargs.get("provider") or _infer_provider(model))
         usage: dict[str, Any] = kwargs.get("usage") or {}
@@ -221,7 +221,7 @@ class AgentMetricsHooks:
         input_tokens = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
         output_tokens = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
         cache_read = int(usage.get("cache_read_input_tokens") or usage.get("cache_read_tokens") or 0)
-        cache_write = int(usage.get("cache_creation_input_tokens") or usage.get("cache_write_tokens") or 0)
+        cache_write = int(usage.get("cache_creation_input_tokens") or usage.get("cache_creation_tokens") or usage.get("cache_write_tokens") or 0)
 
         if _HERMES_PRICING:
             _cu = _CanonicalUsage(
@@ -276,7 +276,7 @@ class AgentMetricsHooks:
                 session.run_count += 1
 
     def api_request_error(self, **kwargs: Any) -> None:
-        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or "unknown")
+        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or kwargs.get("task_id") or "unknown")
         model = str(kwargs.get("model") or "")
         provider = str(kwargs.get("provider") or _infer_provider(model))
         error_msg = str(kwargs.get("error") or kwargs.get("error_message") or "")
@@ -302,7 +302,7 @@ class AgentMetricsHooks:
     # ── Tool call tracking ────────────────────────────────────────────────────
 
     def pre_tool_call(self, **kwargs: Any) -> None:
-        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or "unknown")
+        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or kwargs.get("task_id") or "unknown")
         tool_name_raw = str(kwargs.get("tool_name") or kwargs.get("name") or "")
         tool_call_id = str(kwargs.get("tool_call_id") or "")
         mode = active_mode(self._cfg)
@@ -334,7 +334,7 @@ class AgentMetricsHooks:
         self._enqueue(tool_start_to_payload(ev), mode)
 
     def post_tool_call(self, **kwargs: Any) -> None:
-        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or "unknown")
+        session_key = str(kwargs.get("session_id") or kwargs.get("session_key") or kwargs.get("task_id") or "unknown")
         tool_name_raw = str(kwargs.get("tool_name") or kwargs.get("name") or "")
         tool_call_id = str(kwargs.get("tool_call_id") or "")
         raw_status = str(kwargs.get("status") or "ok")

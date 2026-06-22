@@ -16,16 +16,16 @@ The Hermes plugin is auto-discovered via the `hermes_agent.plugins` entry-point 
 
 ## Configuration
 
-Create `~/.config/hermes/agentmetrics.yaml` (or set environment variables):
+Add to your `~/.hermes/config.yaml`:
 
 ```yaml
-api_key: am_your_key          # from the API key banner on first run
-server_url: http://localhost:4000
-agent_id: my-hermes-agent
-environment: production
-version: "1.0.0"
-flush_interval_s: 5
-batch_size: 50
+plugins:
+  agentmetrics:
+    enabled: true
+    endpoint: http://localhost:8099
+    api_key: am_your_key_here
+  enabled:
+    - agentmetrics
 ```
 
 Environment variable equivalents (take precedence over the file):
@@ -33,7 +33,7 @@ Environment variable equivalents (take precedence over the file):
 | Variable | Description |
 |---|---|
 | `AGENTMETRICS_API_KEY` | API key |
-| `AGENTMETRICS_SERVER_URL` | Server URL |
+| `AGENTMETRICS_URL` | Server URL (default: `http://localhost:8099`) |
 | `AGENTMETRICS_AGENT_ID` | Agent identifier |
 | `AGENTMETRICS_ENVIRONMENT` | Deployment environment |
 
@@ -60,7 +60,7 @@ Environment variable equivalents (take precedence over the file):
 Events are written to a local WAL file before transmission to ensure delivery even when the server is unreachable. The WAL is stored at:
 
 ```
-~/.config/hermes/agentmetrics-wal.jsonl
+~/.hermes/agentmetrics-wal.jsonl
 ```
 
 The WAL directory is created with `chmod 0700` — only the current user can read it. Events are retried automatically on the next flush cycle. Recovered events emit an `audit_wal_recovery` event that increments the `wal_recovered_count` pipeline counter in the dashboard.
@@ -91,5 +91,5 @@ infra_metrics:
 
 - The plugin is idempotent — safe to load multiple times.
 - Circuit breaker: after 5 consecutive delivery failures the plugin backs off for 60s.
-- Dead-letter queue: events that cannot be delivered after 10 retries are written to `~/.config/hermes/agentmetrics-dlq.jsonl` and an `audit_dlq_alert` event is emitted.
+- Dead-letter queue: events that cannot be delivered after 10 retries are written to `~/.hermes/agentmetrics-dlq.json` and an `audit_dlq_alert` event is emitted.
 - Each agent session maps to one run in the dashboard.

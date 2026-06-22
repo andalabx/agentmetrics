@@ -12,7 +12,7 @@ Add to your Hermes config.yaml:
         endpoint: http://localhost:8099
         api_key: am_your_key_here
       enabled:
-        - observability/agentmetrics
+        - agentmetrics
 
 Events flow automatically from the next gateway restart.
 """
@@ -30,7 +30,7 @@ from .pipeline import EventPipeline
 from .state import StateStore
 from .wal import WriteAheadLog
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 __all__ = ["register"]
 
 logger = logging.getLogger(__name__)

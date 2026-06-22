@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentmetrics-hermes"
-version = "0.2.1"
+version = "0.2.2"
 description = "AgentMetrics observability plugin for Hermes agents"
 authors = [{ name = "AndaLabX", email = "anda@andalabx.com" }]
 license = { text = "MIT" }

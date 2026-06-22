@@ -94,4 +94,4 @@ def test_gzip_compression_sent(tmp_path: pytest.TempPathFactory) -> None:
     # Should be gzip-compressed — verify it decompresses correctly.
     decompressed = gzip.decompress(received[0])
     parsed = json.loads(decompressed)
-    assert len(parsed) == 5
+    assert len(parsed["events"]) == 5
